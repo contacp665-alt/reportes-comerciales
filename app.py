@@ -31,10 +31,11 @@ moneda = st.sidebar.selectbox("Moneda de Expresión:", ["SOLES", "DÓLARES"])
 p_inicio = st.sidebar.text_input("Periodo Inicio (AAAAMM):", value="202601")
 p_fin = st.sidebar.text_input("Periodo Fin (AAAAMM):", value="202601")
 
-# Selector dinámico del volumen del ranking
+# Selector dinámico de rankings (¡SINTAXIS BLINDADA CORREGIDA!)
 st.sidebar.markdown("---")
 st.sidebar.header("🔝 AJUSTES DE RANKINGS")
-top_n = st.sidebar.selectbox("Mostrar en rankings:", [10, 25, 50], index=0)
+opciones_top = (10, 25, 50)
+top_n = st.sidebar.selectbox("Mostrar en rankings:", opciones_top, index=0)
 
 # Parámetros del Reporte Comercial por Niveles
 st.sidebar.subheader("Estructura - Matriz Dinámica:")
