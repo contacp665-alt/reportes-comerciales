@@ -17,24 +17,26 @@ uploaded_maestro = st.sidebar.file_uploader("3. Maestro de Ítems (.xlsx)", type
 # 2. SELECCIÓN DE FILTROS GENERALES
 st.sidebar.header("🎛️ FILTROS GENERALES")
 
-# Configuración limpia de empresas
-opciones_empresa = {
-    "TS (02000000)": "02000000",
-    "IS (03000000)": "03000000",
-    "RS (01000000)": "01000000"
-}
-empresa_seleccionada = st.sidebar.selectbox("Empresa:", list(opciones_empresa.keys()))
-empresa_codigo = opciones_empresa[empresa_seleccionada]
+# Configuración simplificada con listas planas independientes
+lista_empresas = ["TS (02000000)", "IS (03000000)", "RS (01000000)"]
+empresa_seleccionada = st.sidebar.selectbox("Empresa:", lista_empresas)
+
+# Extraer el código de 8 dígitos de forma segura mediante texto
+empresa_codigo = "02000000"
+if "IS" in empresa_seleccionada:
+    empresa_codigo = "03000000"
+elif "RS" in empresa_seleccionada:
+    empresa_codigo = "01000000"
 
 moneda = st.sidebar.selectbox("Moneda de Expresión:", ["SOLES", "DÓLARES"])
 
 p_inicio = st.sidebar.text_input("Periodo Inicio (AAAAMM):", value="202601")
 p_fin = st.sidebar.text_input("Periodo Fin (AAAAMM):", value="202601")
 
-# Selector dinámico de rankings (¡SINTAXIS BLINDADA CORREGIDA!)
+# Selector dinámico de rankings con lista plana de enteros
 st.sidebar.markdown("---")
 st.sidebar.header("🔝 AJUSTES DE RANKINGS")
-opciones_top = (10, 25, 50)
+opciones_top = [10, 25, 50]
 top_n = st.sidebar.selectbox("Mostrar en rankings:", opciones_top, index=0)
 
 # Parámetros del Reporte Comercial por Niveles
@@ -199,6 +201,3 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
         st.error(f"❌ Ocurrió un inconveniente al computar las bases: {e}")
 else:
     st.info("👋 Bienvenido. Por favor, carga los tres archivos Excel solicitados en la barra lateral izquierda para activar el procesamiento del sistema.")
-
-
-
