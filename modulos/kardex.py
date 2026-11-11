@@ -361,4 +361,3 @@ def render(ctx):
 
     except Exception as e:
         st.error(f"❌ Error al procesar el archivo Kardex: {e}")
-
