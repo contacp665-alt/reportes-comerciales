@@ -17,11 +17,11 @@ uploaded_maestro = st.sidebar.file_uploader("3. Maestro de Ítems (.xlsx)", type
 # 2. SELECCIÓN DE FILTROS GENERALES
 st.sidebar.header("🎛️ FILTROS GENERALES")
 
-# Configuración simplificada con listas planas independientes
+# Configuración limpia de empresas
 lista_empresas = ["TS (02000000)", "IS (03000000)", "RS (01000000)"]
 empresa_seleccionada = st.sidebar.selectbox("Empresa:", lista_empresas)
 
-# Extraer el código de 8 dígitos de forma segura mediante texto
+# Extraer el código de 8 dígitos mediante texto plano
 empresa_codigo = "02000000"
 if "IS" in empresa_seleccionada:
     empresa_codigo = "03000000"
@@ -33,11 +33,10 @@ moneda = st.sidebar.selectbox("Moneda de Expresión:", ["SOLES", "DÓLARES"])
 p_inicio = st.sidebar.text_input("Periodo Inicio (AAAAMM):", value="202601")
 p_fin = st.sidebar.text_input("Periodo Fin (AAAAMM):", value="202601")
 
-# Selector dinámico de rankings con lista plana de enteros
+# Selector dinámico de rankings con tupla inmutable (¡A prueba de errores de listas!)
 st.sidebar.markdown("---")
 st.sidebar.header("🔝 AJUSTES DE RANKINGS")
-opciones_top = [10, 25, 50]
-top_n = st.sidebar.selectbox("Mostrar en rankings:", opciones_top, index=0)
+top_n = st.sidebar.selectbox("Mostrar en rankings:", (10, 25, 50), index=0)
 
 # Parámetros del Reporte Comercial por Niveles
 st.sidebar.subheader("Estructura - Matriz Dinámica:")
@@ -65,7 +64,7 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
         df_tc['Fecha_Clave_Busqueda'] = df_tc['Fecha'].astype(str).str.slice(0, 10).str.strip()
         df_tc['Oficial Venta'] = pd.to_numeric(df_tc['Oficial Venta'], errors='coerce')
 
-        # Filtrado de Ventas Base por Empresa (Código completo) y Rango de Periodos
+        # Filtrado de Ventas Base por Empresa y Rango de Periodos
         df_filtrado = df_ventas[
             (df_ventas['CompaniaSocio'] == str(empresa_codigo)) & 
             (df_ventas['VoucherPeriodo'] >= str(p_inicio)) & 
@@ -200,4 +199,5 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
     except Exception as e:
         st.error(f"❌ Ocurrió un inconveniente al computar las bases: {e}")
 else:
-    st.info("👋 Bienvenido. Por favor, carga los tres archivos Excel solicitados en la barra lateral izquierda para activar el procesamiento del sistema.")
+    st.sidebar.info("👋 Por favor, carga los tres archivos Excel solicitados para activar el procesamiento.")
+
