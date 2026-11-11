@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+import rankings
 
 # Configuración estética de la página web
 st.set_page_config(page_title="Sistema de Reportes Contables", page_icon="📊", layout="wide")
@@ -76,66 +77,74 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
                 axis=1
             )
 
-            # Construcción de la Tabla Dinámica según niveles activos
-            columnas_agrupacion = []
-            if n1: columnas_agrupacion.append('Tipo_Categoria')
-            if n2: columnas_agrupacion.append('Marca_Descripcion')
-            if n3: 
-                columnas_agrupacion.append('ItemCodigo')
-                if 'Descripcion' in df_final.columns: columnas_agrupacion.append('Descripcion')
+            # PESTAÑAS PRINCIPALES
+            tab1, tab2 = st.tabs(["📊 Reporte por Categorías", "🏆 Top Productos y Clientes"])
 
-            if not columnas_agrupacion:
-                st.info("💡 Por favor, activa al menos un nivel de estructura en la barra lateral.")
-            else:
-                # Agrupación y Cálculos
-                reporte_dinamico = df_final.groupby(columnas_agrupacion).agg({
-                    'CantidadPedida': 'sum',
-                    'Monto_Convertido': 'sum'
-                }).reset_index()
+            # PESTAÑA 1: REPORTE ORIGINAL INTACTO
+            with tab1:
+                columnas_agrupacion = []
+                if n1: columnas_agrupacion.append('Tipo_Categoria')
+                if n2: columnas_agrupacion.append('Marca_Descripcion')
+                if n3: 
+                    columnas_agrupacion.append('ItemCodigo')
+                    if 'Descripcion' in df_final.columns: columnas_agrupacion.append('Descripcion')
 
-                reporte_dinamico = reporte_dinamico.sort_values(by='Monto_Convertido', ascending=False).reset_index(drop=True)
+                if not columnas_agrupacion:
+                    st.info("💡 Por favor, activa al menos un nivel de estructura en la barra lateral.")
+                else:
+                    # Agrupación y Cálculos
+                    reporte_dinamico = df_final.groupby(columnas_agrupacion).agg({
+                        'CantidadPedida': 'sum',
+                        'Monto_Convertido': 'sum'
+                    }).reset_index()
 
-                total_cantidades = reporte_dinamico['CantidadPedida'].sum()
-                total_ventas = reporte_dinamico['Monto_Convertido'].sum()
+                    reporte_dinamico = reporte_dinamico.sort_values(by='Monto_Convertido', ascending=False).reset_index(drop=True)
 
-                # Formatear la tabla visual
-                simb = "S/" if moneda == 'SOLES' else "$"
-                vista_tabla = reporte_dinamico.copy()
-                vista_tabla['CantidadPedida'] = vista_tabla['CantidadPedida'].map('{:,.0f}'.format)
-                vista_tabla['Monto_Convertido'] = vista_tabla['Monto_Convertido'].map(lambda x: f"{simb} {x:,.2f}")
+                    total_cantidades = reporte_dinamico['CantidadPedida'].sum()
+                    total_ventas = reporte_dinamico['Monto_Convertido'].sum()
 
-                # Fila de Totales
-                fila_total = {col: "" for col in columnas_agrupacion}
-                fila_total[columnas_agrupacion[0]] = "TOTAL GENERAL"
-                fila_total['CantidadPedida'] = f"{total_cantidades:,.0f}"
-                fila_total['Monto_Convertido'] = f"{simb} {total_ventas:,.2f}"
-                df_fila_total = pd.DataFrame([fila_total])
+                    # Formatear la tabla visual
+                    simb = "S/" if moneda == 'SOLES' else "$"
+                    vista_tabla = reporte_dinamico.copy()
+                    vista_tabla['CantidadPedida'] = vista_tabla['CantidadPedida'].map('{:,.0f}'.format)
+                    vista_tabla['Monto_Convertido'] = vista_tabla['Monto_Convertido'].map(lambda x: f"{simb} {x:,.2f}")
 
-                # Desplegar en la página web
-                st.subheader(f"📊 Reporte Generado ({moneda})")
-                st.dataframe(vista_tabla, use_container_width=True)
-                st.dataframe(df_fila_total, use_container_width=True)
+                    # Fila de Totales
+                    fila_total = {col: "" for col in columnas_agrupacion}
+                    fila_total[columnas_agrupacion[0]] = "TOTAL GENERAL"
+                    fila_total['CantidadPedida'] = f"{total_cantidades:,.0f}"
+                    fila_total['Monto_Convertido'] = f"{simb} {total_ventas:,.2f}"
+                    df_fila_total = pd.DataFrame([fila_total])
 
-                # BOTÓN DE EXPORTACIÓN DIRECTA EN WEB
-                fila_total_excel = {col: "" for col in columnas_agrupacion}
-                fila_total_excel[columnas_agrupacion[0]] = "TOTAL GENERAL"
-                fila_total_excel['CantidadPedida'] = total_cantidades
-                fila_total_excel['Monto_Convertido'] = total_ventas
-                reporte_excel_final = pd.concat([reporte_dinamico, pd.DataFrame([fila_total_excel])], ignore_index=True)
+                    # Desplegar en la página web
+                    st.subheader(f"📊 Reporte Generado ({moneda})")
+                    st.dataframe(vista_tabla, use_container_width=True)
+                    st.dataframe(df_fila_total, use_container_width=True)
 
-                # Generar el archivo Excel en la memoria del navegador
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    reporte_excel_final.to_excel(writer, sheet_name='Reporte Dinamico', index=False)
-                
-                st.download_button(
-                    label="📥 Descargar Reporte en Excel",
-                    data=buffer.getvalue(),
-                    file_name=f"Reporte_Dinamico_{empresa}_{p_inicio}_{moneda}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                    # BOTÓN DE EXPORTACIÓN DIRECTA EN WEB
+                    fila_total_excel = {col: "" for col in columnas_agrupacion}
+                    fila_total_excel[columnas_agrupacion[0]] = "TOTAL GENERAL"
+                    fila_total_excel['CantidadPedida'] = total_cantidades
+                    fila_total_excel['Monto_Convertido'] = total_ventas
+                    reporte_excel_final = pd.concat([reporte_dinamico, pd.DataFrame([fila_total_excel])], ignore_index=True)
+
+                    # Generar el archivo Excel en la memoria del navegador
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        reporte_excel_final.to_excel(writer, sheet_name='Reporte Dinamico', index=False)
+                    
+                    st.download_button(
+                        label="📥 Descargar Reporte en Excel",
+                        data=buffer.getvalue(),
+                        file_name=f"Reporte_Dinamico_{empresa}_{p_inicio}_{moneda}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+
+            # PESTAÑA 2: MÓDULO EXTERNO DE RANKINGS
+            with tab2:
+                rankings.mostrar_rankings(df_final, moneda, empresa, p_inicio, p_fin)
+
     except Exception as e:
         st.error(f"❌ Ocurrió un inconveniente al procesar las estructuras: {e}")
 else:
     st.info("👋 Bienvenido. Por favor, sube los tres archivos Excel solicitados en la barra lateral izquierda para activar el panel.")
-
