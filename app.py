@@ -174,13 +174,16 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
                 # Guardar completo para Excel
                 reporte_productos_excel = rep_productos.copy()
 
+                            # Guardar completo para Excel
+                reporte_productos_excel = rep_productos.copy()
+
             # --- EXPORTACIÓN UNIFICADA MULTI-PESTAÑA (DESCARGA WEB) ---
             st.markdown("---")
             st.subheader("💾 DESCARGA DE REPORTES PARA GERENCIA")
             
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                                if not reporte_matriz_excel.empty:
+                if not reporte_matriz_excel.empty:
                     reporte_matriz_excel.to_excel(writer, sheet_name='1. Matriz Ventas', index=False)
                 reporte_clientes_excel.to_excel(writer, sheet_name='2. Ranking Clientes', index=False)
                 reporte_productos_excel.to_excel(writer, sheet_name='3. Ranking Productos', index=False)
@@ -195,4 +198,5 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
         st.error(f"❌ Ocurrió un inconveniente al computar las bases: {e}")
 else:
     st.info("👋 Bienvenido. Por favor, carga los tres archivos Excel solicitados en la barra lateral izquierda para activar el procesamiento del sistema.")
+
 
