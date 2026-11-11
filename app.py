@@ -16,16 +16,16 @@ uploaded_maestro = st.sidebar.file_uploader("3. Maestro de Ítems (.xlsx)", type
 
 # 2. SELECCIÓN DE FILTROS GENERALES
 st.sidebar.header("🎛️ FILTROS GENERALES")
-empresa = st.sidebar.selectbox("Empresa:", [("TS (02000000)", "02000000"), ("IS (03000000)", "03000000"), ("RS (01000000)", "01000000")], format_func=lambda x: x[0])
+empresa = st.sidebar.selectbox("Empresa:", [("TS (02000000)", "02000000"), ("IS (03000000)", "03000000"), ("RS (01000000)", "01000000")], format_func=lambda x: x)
 moneda = st.sidebar.selectbox("Moneda de Expresión:", ["SOLES", "DÓLARES"])
 
 p_inicio = st.sidebar.text_input("Periodo Inicio (AAAAMM):", value="202601")
 p_fin = st.sidebar.text_input("Periodo Fin (AAAAMM):", value="202601")
 
-# Selector dinámico del volumen del ranking (Línea corregida)
+# Selector dinámico del volumen del ranking
 st.sidebar.markdown("---")
 st.sidebar.header("🔝 AJUSTES DE RANKINGS")
-top_n = st.sidebar.selectbox("Mostrar en rankings:", [10, 25, 50], index=0)
+top_n = st.sidebar.selectbox("Mostrar en rankings:",, index=0)
 
 # Parámetros del Reporte Comercial por Niveles
 st.sidebar.subheader("Estructura - Matriz Dinámica:")
@@ -55,13 +55,13 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
 
         # Filtrado de Ventas Base por Empresa y Rango de Periodos
         df_filtrado = df_ventas[
-            (df_ventas['CompaniaSocio'] == empresa[1]) & 
+            (df_ventas['CompaniaSocio'] == empresa) & 
             (df_ventas['VoucherPeriodo'] >= str(p_inicio)) & 
             (df_ventas['VoucherPeriodo'] <= str(p_fin))
         ].copy()
 
         if df_filtrado.empty:
-            st.warning(f"⚠️ No se encontraron transacciones para la empresa {empresa[0]} en el rango {p_inicio} - {p_fin}.")
+            st.warning(f"⚠️ No se encontraron transacciones para la empresa {empresa} en el rango {p_inicio} - {p_fin}.")
         else:
             # Enlaces Relacionales (Mergings) Básicos
             df_cruces = pd.merge(df_filtrado, df_tc[['Fecha_Clave_Busqueda', 'Oficial Venta']], on='Fecha_Clave_Busqueda', how='left')
@@ -142,7 +142,7 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
                 
                 # Extraer el Top N seleccionado para la pantalla
                 top_clientes_vista = rep_clientes.head(top_n).copy()
-                top_clientes_vista.index = top_clientes_vista.index + 1 # Numeración rankeada
+                top_clientes_vista.index = top_clientes_vista.index + 1
                 top_clientes_vista['Monto_Convertido'] = top_clientes_vista['Monto_Convertido'].map(lambda x: f"{simb} {x:,.2f}")
 
                 st.subheader(f"🏆 Top {top_n} Clientes con Mayor Facturación ({moneda})")
@@ -174,24 +174,24 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
                 # Guardar completo para Excel
                 reporte_productos_excel = rep_productos.copy()
 
-            # --- EXPORTACIÓN UNIFICADA MULTI-PESTAÑA (DESCARGA WEB) ---
+            # --- EXPORTACIÓN UNIFICADA MULTI-PESTAÑA (DESCARGA WEB CORREGIDA) ---
             st.markdown("---")
             st.subheader("💾 DESCARGA DE REPORTES PARA GERENCIA")
             
-            # Generar el libro de Excel en la memoria volátil del navegador
+            # Generar el libro de Excel en la memoria volátil del navegador (Alineación corregida)
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-if not reporte_matriz_excel.empty:
-reporte_matriz_excel.to_excel(writer, sheet_name='1. Matriz Ventas', index=False)
-reporte_clientes_excel.to_excel(writer, sheet_name='2. Ranking Clientes', index=False)
-reporte_productos_excel.to_excel(writer, sheet_name='3. Ranking Productos', index=False)
-st.download_button(
-label="📥 Descargar Libro Completo de Excel (3 Pestañas)",
-data=buffer.getvalue(),
-file_name=f"Reporte_Gerencial_{empresa[1]}{p_inicio}{moneda}.xlsx",
-mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-except Exception as e:
-st.error(f"❌ Ocurrió un inconveniente al computar las bases: {e}")
-else:
-st.info("👋 Bienvenido. Por favor, carga los tres archivos Excel solicitados en la barra lateral izquierda para activar el procesamiento del sistema.")
+                if not reporte_matriz_excel.empty:
+                    reporte_matriz_excel.to_excel(writer, sheet_name='1. Matriz Ventas', index=False)
+                    reporte_clientes_excel.to_excel(writer, sheet_name='2. Ranking Clientes', index=False)
+                    reporte_productos_excel.to_excel(writer, sheet_name='3. Ranking Productos', index=False)
+                    st.download_button(
+                    label="📥 Descargar Libro Completo de Excel (3 Pestañas)",
+                    data=buffer.getvalue(),
+                    file_name=f"Reporte_Gerencial_{empresa}{p_inicio}{moneda}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+            except Exception as e:
+                st.error(f"❌ Ocurrió un inconveniente al computar las bases: {e}")
+            else:
+            st.info("👋 Bienvenido. Por favor, carga los tres archivos Excel solicitados en la barra lateral izquierda para activar el procesamiento del sistema.")
