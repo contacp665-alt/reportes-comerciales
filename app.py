@@ -180,17 +180,19 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
             
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                if not reporte_matriz_excel.empty:
-    reporte_matriz_excel.to_excel(writer, sheet_name='1. Matriz Ventas', index=False)
-reporte_clientes_excel.to_excel(writer, sheet_name='2. Ranking Clientes', index=False)
-reporte_productos_excel.to_excel(writer, sheet_name='3. Ranking Productos', index=False)
-st.download_button(
-label="📥 Descargar Libro Completo de Excel (3 Pestañas)",
-data=buffer.getvalue(),
-file_name=f"Reporte_Gerencial_{empresa[1]}{p_inicio}{moneda}.xlsx",
-mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-except Exception as e:
-st.error(f"❌ Ocurrió un inconveniente al computar las bases: {e}")
+                                if not reporte_matriz_excel.empty:
+                    reporte_matriz_excel.to_excel(writer, sheet_name='1. Matriz Ventas', index=False)
+                reporte_clientes_excel.to_excel(writer, sheet_name='2. Ranking Clientes', index=False)
+                reporte_productos_excel.to_excel(writer, sheet_name='3. Ranking Productos', index=False)
+            
+            st.download_button(
+                label="📥 Descargar Libro Completo de Excel (3 Pestañas)",
+                data=buffer.getvalue(),
+                file_name=f"Reporte_Gerencial_{empresa}_{p_inicio}_{moneda}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+    except Exception as e:
+        st.error(f"❌ Ocurrió un inconveniente al computar las bases: {e}")
 else:
-st.info("👋 Bienvenido. Por favor, carga los tres archivos Excel solicitados en la barra lateral izquierda para activar el procesamiento del sistema.")
+    st.info("👋 Bienvenido. Por favor, carga los tres archivos Excel solicitados en la barra lateral izquierda para activar el procesamiento del sistema.")
+
