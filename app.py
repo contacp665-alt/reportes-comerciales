@@ -84,6 +84,7 @@ if uploaded_ventas and uploaded_tc and uploaded_maestro:
 
             contexto = {
                 "df_final": df_final,
+                "df_ventas": df_ventas,  # <--- LÍNEA CLAVE PARA EL CRUCE DESFASADO DE KARDEX
                 "df_tc": df_tc,
                 "df_maestro": df_maestro,
                 "empresa": empresa,
