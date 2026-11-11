@@ -16,8 +16,18 @@ uploaded_maestro = st.sidebar.file_uploader("3. Maestro de Ítems (.xlsx)", type
 
 # 2. SELECCIÓN DE FILTROS GENERALES
 st.sidebar.header("🎛️ FILTROS GENERALES")
-empresa = st.sidebar.selectbox("Empresa:", [("TS (02000000)", "02000000"), ("IS (03000000)", "03000000"), ("RS (01000000)", "01000000")], format_func=lambda x: x[0])
+
+# Configuración simplificada y blindada de empresas
+opciones_empresa = {
+    "TS (02000000)": "02000000",
+    "IS (03000000)": "03000000",
+    "RS (01000000)": "01000000"
+}
+empresa_seleccionada = st.sidebar.selectbox("Empresa:", list(opciones_empresa.keys()))
+empresa = opciones_empresa[empresa_seleccionada]
+
 moneda = st.sidebar.selectbox("Moneda de Expresión:", ["SOLES", "DÓLARES"])
+
 
 p_inicio = st.sidebar.text_input("Periodo Inicio (AAAAMM):", value="202601")
 p_fin = st.sidebar.text_input("Periodo Fin (AAAAMM):", value="202601")
