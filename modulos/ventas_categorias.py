@@ -153,7 +153,6 @@ def render(ctx):
         k3.metric(f"Unidades {anio_act}", f"{q_act:,.0f}", f"{var_q_pct:+.2f}% vs {anio_ant}")
         k4.metric(f"Unidades {anio_ant}", f"{q_ant:,.0f}")
 
-        # Selección inteligente de dimensión para los gráficos Top 5
         if n2:
             dim_graf = 'Marca_Descripcion'
             titulo_dim = 'Marcas'
