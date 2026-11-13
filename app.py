@@ -1,11 +1,16 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import importlib
 from modulos import ventas_categorias, rankings, kardex
+
+importlib.reload(ventas_categorias)
+importlib.reload(rankings)
+importlib.reload(kardex)
 
 st.set_page_config(page_title="Sistema de Reportes Contables", page_icon="📊", layout="wide")
 
-st.title("⚙️ PANEL INTERACTIVO DE CONTROL DE GESTIÓN EL SOL")
+st.title("⚙️ PANEL INTERACTIVO DE CONTROL DE GESTIÓN")
 st.markdown("---")
 
 MODULOS_ACTIVOS = {
