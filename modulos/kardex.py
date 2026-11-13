@@ -136,7 +136,7 @@ def render(ctx):
     p_fin = ctx["p_fin"]
     simb = "S/" if moneda == 'SOLES' else "$"
 
-    st.subheader(f"📦 Gestión de Kardex version mil, Costos y Rentabilidad ({moneda})")
+    st.subheader(f"📦 Gestión de Kardex, Costos y Rentabilidad ({moneda})")
 
     uploaded_kardex = st.file_uploader(
         "Sube el archivo Kardex (.parquet o .xlsx):",
@@ -242,7 +242,7 @@ def render(ctx):
                     if not cols_agrup:
                         st.info("💡 Activa al menos un nivel de agrupación arriba.")
                     else:
-                        resumen_rent = df_cruce.groupby(cols_agrup, as_index=False).agg(
+                        resumen_rent = df_cruce.groupby(cols_agrup, as_index=False, dropna=False).agg(
                             Ventas=('Ventas', 'sum'),
                             Costo=('Costo', 'sum'),
                             Utilidad=('Utilidad', 'sum'),
@@ -254,7 +254,7 @@ def render(ctx):
                         resumen_rent['Margen_%'] = np.where(resumen_rent['Ventas'] != 0, (resumen_rent['Utilidad'] / resumen_rent['Ventas']) * 100, 0)
 
                         fila_tot = {c: '' for c in cols_agrup}
-                        fila_tot[cols_agrup[0]] = 'TOTAL GENERAL'
+                        fila_tot[next(iter(cols_agrup))] = 'TOTAL GENERAL'
                         fila_tot['Ventas'] = resumen_rent['Ventas'].sum()
                         fila_tot['Costo'] = resumen_rent['Costo'].sum()
                         fila_tot['Utilidad'] = resumen_rent['Utilidad'].sum()
@@ -372,11 +372,11 @@ def render(ctx):
                         st.info("💡 Activa al menos un nivel de agrupación arriba para ver la tabla comparativa.")
                     else:
                         def construir_tabla_comparativa(keys_agrup):
-                            g_ant = df_cruce_ant.groupby(keys_agrup, as_index=False).agg(
+                            g_ant = df_cruce_ant.groupby(keys_agrup, as_index=False, dropna=False).agg(
                                 Ventas_Ant=('Ventas', 'sum'), Costo_Ant=('Costo', 'sum'), Utilidad_Ant=('Utilidad', 'sum')
                             ) if not df_cruce_ant.empty else pd.DataFrame(columns=keys_agrup + ['Ventas_Ant', 'Costo_Ant', 'Utilidad_Ant'])
 
-                            g_act = df_cruce_act.groupby(keys_agrup, as_index=False).agg(
+                            g_act = df_cruce_act.groupby(keys_agrup, as_index=False, dropna=False).agg(
                                 Ventas_Act=('Ventas', 'sum'), Costo_Act=('Costo', 'sum'), Utilidad_Act=('Utilidad', 'sum')
                             ) if not df_cruce_act.empty else pd.DataFrame(columns=keys_agrup + ['Ventas_Act', 'Costo_Act', 'Utilidad_Act'])
 
@@ -388,7 +388,7 @@ def render(ctx):
                             comp = comp.sort_values(by='Ventas_Act', ascending=False).reset_index(drop=True)
 
                             fila_t = {c: '' for c in keys_agrup}
-                            fila_t[keys_agrup[0]] = 'TOTAL GENERAL'
+                            fila_t[next(iter(keys_agrup))] = 'TOTAL GENERAL'
                             fila_t['Ventas_Ant']   = comp['Ventas_Ant'].sum()
                             fila_t['Ventas_Act']   = comp['Ventas_Act'].sum()
                             fila_t['Var_Ventas_%'] = var_v_pct
@@ -473,24 +473,28 @@ def render(ctx):
                     with cc2:
                         comp_n2 = st.checkbox("Nivel 2: Ítems", value=False, key="comp_n2")
 
-                    col_desc_k = 'DescripcionLocal' if 'DescripcionLocal' in df_comp.columns else ('Descripcion' if 'Descripcion' in df_comp.columns else None)
+                    col_desc_k = next((c for c in ['DescripcionLocal', 'Descripcion'] if c in df_comp.columns), None)
+                    if col_desc_k:
+                        df_comp[col_desc_k] = df_comp[col_desc_k].fillna('SIN DESCRIPCIÓN').astype(str).str.strip()
 
                     cols_agrup_comp = ['Tipo_Movimiento']
-                    if comp_n1: cols_agrup_comp.append('Tipo_Categoria')
+                    if comp_n1:
+                        cols_agrup_comp.append('Tipo_Categoria')
                     if comp_n2:
                         cols_agrup_comp.append('Item')
-                        if col_desc_k: cols_agrup_comp.append(col_desc_k)
+                        if col_desc_k:
+                            cols_agrup_comp.append(col_desc_k)
 
                     if not comp_n1 and not comp_n2:
                         st.info("💡 Activa al menos un nivel de agrupación (Categoría o Ítems) arriba.")
                     else:
-                        resumen_comp = df_comp.groupby(cols_agrup_comp, as_index=False).agg(
+                        resumen_comp = df_comp.groupby(cols_agrup_comp, as_index=False, dropna=False).agg(
                             Cantidad=('Cantidad', 'sum'),
                             Monto_Total=('Monto_Kardex', 'sum')
                         ).sort_values(by=['Tipo_Movimiento', 'Monto_Total'], ascending=[True, False]).reset_index(drop=True)
 
                         fila_tot_c = {c: '' for c in cols_agrup_comp}
-                        fila_tot_c[cols_agrup_comp[0]] = 'TOTAL GENERAL'
+                        fila_tot_c[next(iter(cols_agrup_comp))] = 'TOTAL GENERAL'
                         fila_tot_c['Cantidad'] = resumen_comp['Cantidad'].sum()
                         fila_tot_c['Monto_Total'] = resumen_comp['Monto_Total'].sum()
                         resumen_comp_tot = pd.concat([resumen_comp, pd.DataFrame([fila_tot_c])], ignore_index=True)
@@ -500,12 +504,12 @@ def render(ctx):
                         vista_cc['Monto_Total'] = vista_cc['Monto_Total'].map(lambda x: f"{simb} {x:,.2f}")
                         st.dataframe(vista_cc, use_container_width=True)
 
-                    comp_cat_xl = df_comp.groupby(['Tipo_Movimiento', 'Tipo_Categoria'], as_index=False).agg(
+                    comp_cat_xl = df_comp.groupby(['Tipo_Movimiento', 'Tipo_Categoria'], as_index=False, dropna=False).agg(
                         Cantidad=('Cantidad', 'sum'), Monto_Total=('Monto_Kardex', 'sum')
                     ).sort_values(by=['Tipo_Movimiento', 'Monto_Total'], ascending=[True, False])
 
                     cols_item_c = ['Tipo_Movimiento', 'Tipo_Categoria', 'Item'] + ([col_desc_k] if col_desc_k else [])
-                    comp_item_xl = df_comp.groupby(cols_item_c, as_index=False).agg(
+                    comp_item_xl = df_comp.groupby(cols_item_c, as_index=False, dropna=False).agg(
                         Cantidad=('Cantidad', 'sum'), Monto_Total=('Monto_Kardex', 'sum')
                     ).sort_values(by='Monto_Total', ascending=False)
 
@@ -539,24 +543,28 @@ def render(ctx):
                     with cs2:
                         cons_n2 = st.checkbox("Nivel 2: Ítems", value=False, key="cons_n2")
 
-                    col_desc_cs = 'DescripcionLocal' if 'DescripcionLocal' in df_cons.columns else ('Descripcion' if 'Descripcion' in df_cons.columns else None)
+                    col_desc_cs = next((c for c in ['DescripcionLocal', 'Descripcion'] if c in df_cons.columns), None)
+                    if col_desc_cs:
+                        df_cons[col_desc_cs] = df_cons[col_desc_cs].fillna('SIN DESCRIPCIÓN').astype(str).str.strip()
 
                     cols_agrup_cons = []
-                    if cons_n1: cols_agrup_cons.append('Tipo_Categoria')
+                    if cons_n1:
+                        cols_agrup_cons.append('Tipo_Categoria')
                     if cons_n2:
                         cols_agrup_cons.append('Item')
-                        if col_desc_cs: cols_agrup_cons.append(col_desc_cs)
+                        if col_desc_cs:
+                            cols_agrup_cons.append(col_desc_cs)
 
                     if not cols_agrup_cons:
                         st.info("💡 Activa al menos un nivel de agrupación (Categoría o Ítems) arriba.")
                     else:
-                        resumen_cons = df_cons.groupby(cols_agrup_cons, as_index=False).agg(
+                        resumen_cons = df_cons.groupby(cols_agrup_cons, as_index=False, dropna=False).agg(
                             Cantidad=('Cantidad', 'sum'),
                             Monto_Total=('Costo_Consumo', 'sum')
                         ).sort_values(by='Monto_Total', ascending=False).reset_index(drop=True)
 
                         fila_tot_cs = {c: '' for c in cols_agrup_cons}
-                        fila_tot_cs[cols_agrup_cons[0]] = 'TOTAL GENERAL'
+                        fila_tot_cs[next(iter(cols_agrup_cons))] = 'TOTAL GENERAL'
                         fila_tot_cs['Cantidad'] = resumen_cons['Cantidad'].sum()
                         fila_tot_cs['Monto_Total'] = resumen_cons['Monto_Total'].sum()
                         resumen_cons_tot = pd.concat([resumen_cons, pd.DataFrame([fila_tot_cs])], ignore_index=True)
@@ -566,12 +574,12 @@ def render(ctx):
                         vista_cons['Monto_Total'] = vista_cons['Monto_Total'].map(lambda x: f"{simb} {x:,.2f}")
                         st.dataframe(vista_cons, use_container_width=True)
 
-                    cons_cat_xl = df_cons.groupby(['Tipo_Categoria'], as_index=False).agg(
+                    cons_cat_xl = df_cons.groupby(['Tipo_Categoria'], as_index=False, dropna=False).agg(
                         Cantidad=('Cantidad', 'sum'), Monto_Total=('Costo_Consumo', 'sum')
                     ).sort_values(by='Monto_Total', ascending=False)
 
                     cols_item_cs = ['Tipo_Categoria', 'Item'] + ([col_desc_cs] if col_desc_cs else [])
-                    cons_item_xl = df_cons.groupby(cols_item_cs, as_index=False).agg(
+                    cons_item_xl = df_cons.groupby(cols_item_cs, as_index=False, dropna=False).agg(
                         Cantidad=('Cantidad', 'sum'), Monto_Total=('Costo_Consumo', 'sum')
                     ).sort_values(by='Monto_Total', ascending=False)
 
@@ -605,24 +613,28 @@ def render(ctx):
                     with pr2:
                         prod_n2 = st.checkbox("Nivel 2: Ítems", value=False, key="prod_n2")
 
-                    col_desc_pr = 'DescripcionLocal' if 'DescripcionLocal' in df_prod.columns else ('Descripcion' if 'Descripcion' in df_prod.columns else None)
+                    col_desc_pr = next((c for c in ['DescripcionLocal', 'Descripcion'] if c in df_prod.columns), None)
+                    if col_desc_pr:
+                        df_prod[col_desc_pr] = df_prod[col_desc_pr].fillna('SIN DESCRIPCIÓN').astype(str).str.strip()
 
                     cols_agrup_prod = []
-                    if prod_n1: cols_agrup_prod.append('Tipo_Categoria')
+                    if prod_n1:
+                        cols_agrup_prod.append('Tipo_Categoria')
                     if prod_n2:
                         cols_agrup_prod.append('Item')
-                        if col_desc_pr: cols_agrup_prod.append(col_desc_pr)
+                        if col_desc_pr:
+                            cols_agrup_prod.append(col_desc_pr)
 
                     if not cols_agrup_prod:
                         st.info("💡 Activa al menos un nivel de agrupación (Categoría o Ítems) arriba.")
                     else:
-                        resumen_prod = df_prod.groupby(cols_agrup_prod, as_index=False).agg(
+                        resumen_prod = df_prod.groupby(cols_agrup_prod, as_index=False, dropna=False).agg(
                             Cantidad=('Cantidad', 'sum'),
                             Monto_Total=('Monto_Kardex', 'sum')
                         ).sort_values(by='Monto_Total', ascending=False).reset_index(drop=True)
 
                         fila_tot_pr = {c: '' for c in cols_agrup_prod}
-                        fila_tot_pr[cols_agrup_prod[0]] = 'TOTAL GENERAL'
+                        fila_tot_pr[next(iter(cols_agrup_prod))] = 'TOTAL GENERAL'
                         fila_tot_pr['Cantidad'] = resumen_prod['Cantidad'].sum()
                         fila_tot_pr['Monto_Total'] = resumen_prod['Monto_Total'].sum()
                         resumen_prod_tot = pd.concat([resumen_prod, pd.DataFrame([fila_tot_pr])], ignore_index=True)
@@ -632,12 +644,12 @@ def render(ctx):
                         vista_prod['Monto_Total'] = vista_prod['Monto_Total'].map(lambda x: f"{simb} {x:,.2f}")
                         st.dataframe(vista_prod, use_container_width=True)
 
-                    prod_cat_xl = df_prod.groupby(['Tipo_Categoria'], as_index=False).agg(
+                    prod_cat_xl = df_prod.groupby(['Tipo_Categoria'], as_index=False, dropna=False).agg(
                         Cantidad=('Cantidad', 'sum'), Monto_Total=('Monto_Kardex', 'sum')
                     ).sort_values(by='Monto_Total', ascending=False)
 
                     cols_item_pr = ['Tipo_Categoria', 'Item'] + ([col_desc_pr] if col_desc_pr else [])
-                    prod_item_xl = df_prod.groupby(cols_item_pr, as_index=False).agg(
+                    prod_item_xl = df_prod.groupby(cols_item_pr, as_index=False, dropna=False).agg(
                         Cantidad=('Cantidad', 'sum'), Monto_Total=('Monto_Kardex', 'sum')
                     ).sort_values(by='Monto_Total', ascending=False)
 
