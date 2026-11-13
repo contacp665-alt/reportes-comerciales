@@ -596,7 +596,7 @@ def render(ctx):
                         key="dl_kardex_cons"
                     )
 
-                with tab_prod:
+        with tab_prod:
             if df_k_filt.empty:
                 st.info("No se registran movimientos de producción (API / PRI) en este periodo.")
             else:
