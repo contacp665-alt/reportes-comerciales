@@ -2,12 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import importlib
-from modulos import ventas_categorias, rankings, kardex, resumen_anual
+from modulos import ventas_categorias, rankings, kardex, resumen_anual, produccion_rentabilidad
 
 importlib.reload(ventas_categorias)
 importlib.reload(rankings)
 importlib.reload(kardex)
 importlib.reload(resumen_anual)
+importlib.reload(produccion_rentabilidad)
 
 
 st.set_page_config(page_title="Sistema de Reportes Contables", page_icon="📊", layout="wide")
@@ -20,6 +21,7 @@ MODULOS_ACTIVOS = {
     "🏆 Top Productos y Clientes": rankings.render,
     "📦 Kardex y Rentabilidad": kardex.render,
     "📈 Resumen Anual Mensual": resumen_anual.render,
+    "⚙️ Producción vs. Costo vs. Venta": produccion_rentabilidad.render,
 }
 
 # Función con caché para lectura ultrarrápida (.parquet o .xlsx)
