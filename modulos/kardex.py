@@ -596,7 +596,7 @@ def render(ctx):
                         key="dl_kardex_cons"
                     )
 
-        with tab_prod:
+                with tab_prod:
             if df_k_filt.empty:
                 st.info("No se registran movimientos de producción (API / PRI) en este periodo.")
             else:
@@ -607,11 +607,13 @@ def render(ctx):
                     st.metric(f"Valorización Producción ({moneda})", f"{simb} {df_prod['Monto_Kardex'].sum():,.2f}")
 
                     st.markdown("---")
-                    pr1, pr2 = st.columns(2)
+                    pr1, pr2, pr3 = st.columns(3)
                     with pr1:
                         prod_n1 = st.checkbox("Nivel 1: Categoría", value=True, key="prod_n1")
                     with pr2:
-                        prod_n2 = st.checkbox("Nivel 2: Ítems", value=False, key="prod_n2")
+                        prod_n2 = st.checkbox("Nivel 2: Marca", value=False, key="prod_n2")
+                    with pr3:
+                        prod_n3 = st.checkbox("Nivel 3: Ítems", value=False, key="prod_n3")
 
                     col_desc_pr = next((c for c in ['DescripcionLocal', 'Descripcion'] if c in df_prod.columns), None)
                     if col_desc_pr:
@@ -621,12 +623,14 @@ def render(ctx):
                     if prod_n1:
                         cols_agrup_prod.append('Tipo_Categoria')
                     if prod_n2:
+                        cols_agrup_prod.append('Marca_Descripcion')
+                    if prod_n3:
                         cols_agrup_prod.append('Item')
                         if col_desc_pr:
                             cols_agrup_prod.append(col_desc_pr)
 
                     if not cols_agrup_prod:
-                        st.info("💡 Activa al menos un nivel de agrupación (Categoría o Ítems) arriba.")
+                        st.info("💡 Activa al menos un nivel de agrupación (Categoría, Marca o Ítems) arriba.")
                     else:
                         resumen_prod = df_prod.groupby(cols_agrup_prod, as_index=False, dropna=False).agg(
                             Cantidad=('Cantidad', 'sum'),
@@ -644,17 +648,17 @@ def render(ctx):
                         vista_prod['Monto_Total'] = vista_prod['Monto_Total'].map(lambda x: f"{simb} {x:,.2f}")
                         st.dataframe(vista_prod, use_container_width=True)
 
-                    prod_cat_xl = df_prod.groupby(['Tipo_Categoria'], as_index=False, dropna=False).agg(
+                    prod_cat_xl = df_prod.groupby(['Tipo_Categoria', 'Marca_Descripcion'], as_index=False, dropna=False).agg(
                         Cantidad=('Cantidad', 'sum'), Monto_Total=('Monto_Kardex', 'sum')
                     ).sort_values(by='Monto_Total', ascending=False)
 
-                    cols_item_pr = ['Tipo_Categoria', 'Item'] + ([col_desc_pr] if col_desc_pr else [])
+                    cols_item_pr = ['Tipo_Categoria', 'Marca_Descripcion', 'Item'] + ([col_desc_pr] if col_desc_pr else [])
                     prod_item_xl = df_prod.groupby(cols_item_pr, as_index=False, dropna=False).agg(
                         Cantidad=('Cantidad', 'sum'), Monto_Total=('Monto_Kardex', 'sum')
                     ).sort_values(by='Monto_Total', ascending=False)
 
                     excel_prod = exportar_excel_3_hojas(
-                        prod_cat_xl, "1. Por Categoria",
+                        prod_cat_xl, "1. Por Categoria y Marca",
                         prod_item_xl, "2. Por Item",
                         df_prod, "3. Detalle Produccion"
                     )
@@ -668,3 +672,4 @@ def render(ctx):
 
     except Exception as e:
         st.error(f"❌ Error al procesar el archivo Kardex: {e}")
+
