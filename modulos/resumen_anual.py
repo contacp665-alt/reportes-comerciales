@@ -36,60 +36,25 @@ def construir_matriz_anual(df_datos, cols_agrup, col_valor, anio, simb):
     cols_finales = cols_agrup + orden_meses
     piv = piv[cols_finales].copy()
 
-    piv['Total Anual'] = piv[orden_meses].sum(axis=1)
-    piv = piv.sort_values(by='Total Anual', ascending=False).reset_index(drop=True)
+        piv['Total Periodo'] = piv[orden_meses].sum(axis=1)
+    piv = piv.sort_values(by='Total Periodo', ascending=False).reset_index(drop=True)
 
     # Fila Total General
     fila_tot = {c: '' for c in cols_agrup}
     fila_tot[cols_agrup[0]] = 'TOTAL GENERAL'
     for m in orden_meses:
         fila_tot[m] = piv[m].sum()
-    fila_tot['Total Anual'] = piv['Total Anual'].sum()
+    fila_tot['Total Periodo'] = piv['Total Periodo'].sum()
 
     piv_export = pd.concat([piv, pd.DataFrame([fila_tot])], ignore_index=True)
 
     piv_vista = piv_export.copy()
-    for col_num in orden_meses + ['Total Anual']:
+    for col_num in orden_meses + ['Total Periodo']:
         piv_vista[col_num] = piv_vista[col_num].map(lambda x: f"{simb} {x:,.2f}")
 
     return piv_vista, piv_export
-def render(ctx):
-    df_ventas_all = ctx.get("df_ventas")
-    df_tc = ctx.get("df_tc")
-    df_maestro = ctx.get("df_maestro")
-    empresa = ctx["empresa"]
-    moneda = ctx["moneda"]
-    p_inicio = str(ctx["p_inicio"])
-    anio = p_inicio[:4]
-    simb = "S/" if moneda == 'SOLES' else "$"
 
-    st.subheader(f"📈 Resumen Ejecutivo Anual {anio} - Mes a Mes ({moneda})")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        an_n1 = st.checkbox("Nivel 1: Categoría", value=True, key="an_n1")
-    with c2:
-        an_n2 = st.checkbox("Nivel 2: Ítems", value=False, key="an_n2")
-
-    cols_agrup = []
-    if an_n1: cols_agrup.append('Tipo_Categoria')
-    if an_n2:
-        cols_agrup.append('Item')
-        if 'Descripcion' in df_maestro.columns:
-            cols_agrup.append('Descripcion')
-
-    if not cols_agrup:
-        st.info("💡 Activa al menos un nivel de agrupación (Categoría o Ítems) arriba.")
-        return
-
-    # Preparar maestro limpio
-    df_m = df_maestro.copy()
-    df_m['Item'] = df_m['Item'].astype(str).str.strip()
-    cols_m = ['Item', 'Tipo_Categoria'] + (['Descripcion'] if 'Descripcion' in df_m.columns else [])
-
-    # Procesar Ventas de todo el año seleccionado (Ene a Dic)
-    p_ini_anio = f"{anio}01"
-    p_fin_anio = f"{anio}12"
 
     df_v_anio = df_ventas_all[
         (df_ventas_all['CompaniaSocio'].astype(str).str.strip() == empresa) &
