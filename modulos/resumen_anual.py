@@ -53,6 +53,44 @@ def construir_matriz_anual(df_datos, cols_agrup, col_valor, anio, simb):
         piv_vista[col_num] = piv_vista[col_num].map(lambda x: f"{simb} {x:,.2f}")
 
     return piv_vista, piv_export
+def render(ctx):
+    df_ventas_all = ctx.get("df_ventas")
+    df_tc = ctx.get("df_tc")
+    df_maestro = ctx.get("df_maestro")
+    empresa = ctx["empresa"]
+    moneda = ctx["moneda"]
+    p_inicio = str(ctx["p_inicio"]).strip()
+    p_fin = str(ctx["p_fin"]).strip()
+    anio = p_inicio[:4]
+    simb = "S/" if moneda == 'SOLES' else "$"
+
+    st.subheader(f"📈 Resumen Mensual ({p_inicio} - {p_fin} | {moneda})")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        an_n1 = st.checkbox("Nivel 1: Categoría", value=True, key="an_n1")
+    with c2:
+        an_n2 = st.checkbox("Nivel 2: Ítems", value=False, key="an_n2")
+
+    cols_agrup = []
+    if an_n1: cols_agrup.append('Tipo_Categoria')
+    if an_n2:
+        cols_agrup.append('Item')
+        if 'Descripcion' in df_maestro.columns:
+            cols_agrup.append('Descripcion')
+
+    if not cols_agrup:
+        st.info("💡 Activa al menos un nivel de agrupación (Categoría o Ítems) arriba.")
+        return
+
+    # Preparar maestro limpio
+    df_m = df_maestro.copy()
+    df_m['Item'] = df_m['Item'].astype(str).str.strip()
+    cols_m = ['Item', 'Tipo_Categoria'] + (['Descripcion'] if 'Descripcion' in df_m.columns else [])
+
+    # Usar exactamente el rango seleccionado en los filtros globales
+    p_ini_anio = p_inicio
+    p_fin_anio = p_fin
 
 
 
