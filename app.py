@@ -5,7 +5,7 @@ from modulos import ventas_categorias, rankings, kardex
 
 st.set_page_config(page_title="Sistema de Reportes Contables", page_icon="📊", layout="wide")
 
-st.title("⚙️ PANEL INTERACTIVO DE CONTROL DE GESTIÓN")
+st.title("⚙️ PANEL INTERACTIVO DE CONTROL DE GESTIÓN EL SOL")
 st.markdown("---")
 
 MODULOS_ACTIVOS = {
