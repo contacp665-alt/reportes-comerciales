@@ -40,7 +40,7 @@ def construir_matriz_anual(df_datos, cols_agrup, col_valor, anio, simb):
 
     primera_col = cols_agrup
     fila_tot = {c: '' for c in cols_agrup}
-    fila_tot[primera_col] = 'TOTAL GENERAL'
+    fila_tot[cols_agrup[0]] = 'TOTAL GENERAL'
     for m in orden_meses:
         fila_tot[m] = piv[m].sum()
     fila_tot['Total Periodo'] = piv['Total Periodo'].sum()
