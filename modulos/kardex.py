@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import io
+import gc
 
 MAPEO_TRANSACCIONES = {
     'AEC': 'OTROS',
@@ -56,12 +57,13 @@ def exportar_excel_3_hojas(df_hoja1, nom1, df_hoja2, nom2, df_hoja3, nom3):
         df_hoja3.to_excel(writer, sheet_name=nom3[:31], index=False)
     return buffer.getvalue()
 def ejecutar_cruce_ventas_kardex(df_k_all, df_v_all, df_tc, df_maestro, cols_m, empresa, moneda, p_ini, p_fin):
-    df_kv = df_k_all[
+    mask_k = (
         (df_k_all['CompaniaSocio'] == empresa) &
         (df_k_all['Periodo'] >= str(p_ini)) &
         (df_k_all['Periodo'] <= str(p_fin)) &
         (df_k_all['TransaccionCodigo'].isin(['AVT', 'VTA', 'VTI']))
-    ].copy()
+    )
+    df_kv = df_k_all.loc[mask_k].copy()
 
     if df_kv.empty:
         return pd.DataFrame()
@@ -77,8 +79,9 @@ def ejecutar_cruce_ventas_kardex(df_k_all, df_v_all, df_tc, df_maestro, cols_m, 
         Cant_Kardex=('Cantidad', 'sum'),
         Costo=('Costo_Positivo', 'sum')
     )
+    del df_kv
 
-    df_v_emp = df_v_all[df_v_all['CompaniaSocio'].astype(str).str.strip() == empresa].copy()
+    df_v_emp = df_v_all.loc[df_v_all['CompaniaSocio'].astype(str).str.strip() == empresa].copy()
     df_v_emp['Doc_Cruce'] = df_v_emp['NumeroDocumento'].fillna('').astype(str).str.strip()
     df_v_emp['Item'] = df_v_emp['ItemCodigo'].astype(str).str.strip()
 
@@ -109,8 +112,12 @@ def ejecutar_cruce_ventas_kardex(df_k_all, df_v_all, df_tc, df_maestro, cols_m, 
         Cant_Ventas=('CantidadPedida', 'sum'),
         Ventas=('Venta_Conv', 'sum')
     )
+    del df_v_emp
 
     df_cruce = pd.merge(kardex_agg, ventas_agg, on=['Doc_Cruce', 'Item'], how='left').fillna({'Cant_Ventas': 0, 'Ventas': 0})
+    del kardex_agg, ventas_agg
+    gc.collect()
+
     df_cruce['Dif_Cant'] = (df_cruce['Cant_Kardex'] + df_cruce['Cant_Ventas']).round(2)
     df_cruce['Utilidad'] = df_cruce['Ventas'] - df_cruce['Costo']
 
@@ -450,27 +457,61 @@ def render(ctx):
                 if df_comp.empty:
                     st.info("No se encontraron compras ni importaciones en este periodo.")
                 else:
-                    st.metric(f"Total Compras e Importaciones ({moneda})", f"{simb} {df_comp['Monto_Kardex'].sum():,.2f}")
-                    
-                    comp_cat = df_comp.groupby(['Tipo_Movimiento', 'Tipo_Categoria'], as_index=False).agg(
-                        Cantidad=('Cantidad', 'sum'),
-                        Monto_Total=('Monto_Kardex', 'sum')
+                    tot_comp_loc = df_comp[df_comp['Tipo_Movimiento'] == 'COMPRA']['Monto_Kardex'].sum()
+                    tot_comp_imp = df_comp[df_comp['Tipo_Movimiento'] == 'IMPORTACION']['Monto_Kardex'].sum()
+                    tot_comp_gen = df_comp['Monto_Kardex'].sum()
+
+                    mc1, mc2, mc3 = st.columns(3)
+                    mc1.metric(f"Total Compras e Importaciones ({moneda})", f"{simb} {tot_comp_gen:,.2f}")
+                    mc2.metric("Compras Locales (ARO/ROC)", f"{simb} {tot_comp_loc:,.2f}")
+                    mc3.metric("Importaciones (MIT/MIE)", f"{simb} {tot_comp_imp:,.2f}")
+
+                    st.markdown("---")
+                    cc1, cc2 = st.columns(2)
+                    with cc1:
+                        comp_n1 = st.checkbox("Nivel 1: Categoría", value=True, key="comp_n1")
+                    with cc2:
+                        comp_n2 = st.checkbox("Nivel 2: Ítems", value=False, key="comp_n2")
+
+                    col_desc_k = 'DescripcionLocal' if 'DescripcionLocal' in df_comp.columns else ('Descripcion' if 'Descripcion' in df_comp.columns else None)
+
+                    cols_agrup_comp = ['Tipo_Movimiento']
+                    if comp_n1: cols_agrup_comp.append('Tipo_Categoria')
+                    if comp_n2:
+                        cols_agrup_comp.append('Item')
+                        if col_desc_k: cols_agrup_comp.append(col_desc_k)
+
+                    if not comp_n1 and not comp_n2:
+                        st.info("💡 Activa al menos un nivel de agrupación (Categoría o Ítems) arriba.")
+                    else:
+                        resumen_comp = df_comp.groupby(cols_agrup_comp, as_index=False).agg(
+                            Cantidad=('Cantidad', 'sum'),
+                            Monto_Total=('Monto_Kardex', 'sum')
+                        ).sort_values(by=['Tipo_Movimiento', 'Monto_Total'], ascending=[True, False]).reset_index(drop=True)
+
+                        fila_tot_c = {c: '' for c in cols_agrup_comp}
+                        fila_tot_c[cols_agrup_comp[0]] = 'TOTAL GENERAL'
+                        fila_tot_c['Cantidad'] = resumen_comp['Cantidad'].sum()
+                        fila_tot_c['Monto_Total'] = resumen_comp['Monto_Total'].sum()
+                        resumen_comp_tot = pd.concat([resumen_comp, pd.DataFrame([fila_tot_c])], ignore_index=True)
+
+                        vista_cc = resumen_comp_tot.copy()
+                        vista_cc['Cantidad'] = vista_cc['Cantidad'].map('{:,.2f}'.format)
+                        vista_cc['Monto_Total'] = vista_cc['Monto_Total'].map(lambda x: f"{simb} {x:,.2f}")
+                        st.dataframe(vista_cc, use_container_width=True)
+
+                    comp_cat_xl = df_comp.groupby(['Tipo_Movimiento', 'Tipo_Categoria'], as_index=False).agg(
+                        Cantidad=('Cantidad', 'sum'), Monto_Total=('Monto_Kardex', 'sum')
                     ).sort_values(by=['Tipo_Movimiento', 'Monto_Total'], ascending=[True, False])
 
-                    comp_item = df_comp.groupby(['Tipo_Movimiento', 'Tipo_Categoria', 'Marca_Descripcion', 'Item', 'DescripcionLocal'], as_index=False).agg(
-                        Cantidad=('Cantidad', 'sum'),
-                        Monto_Total=('Monto_Kardex', 'sum')
+                    cols_item_c = ['Tipo_Movimiento', 'Tipo_Categoria', 'Item'] + ([col_desc_k] if col_desc_k else [])
+                    comp_item_xl = df_comp.groupby(cols_item_c, as_index=False).agg(
+                        Cantidad=('Cantidad', 'sum'), Monto_Total=('Monto_Kardex', 'sum')
                     ).sort_values(by='Monto_Total', ascending=False)
 
-                    st.markdown("**Resumen por Tipo de Compra y Categoría**")
-                    vista_cc = comp_cat.copy()
-                    vista_cc['Cantidad'] = vista_cc['Cantidad'].map('{:,.2f}'.format)
-                    vista_cc['Monto_Total'] = vista_cc['Monto_Total'].map(lambda x: f"{simb} {x:,.2f}")
-                    st.dataframe(vista_cc, use_container_width=True)
-
                     excel_comp = exportar_excel_3_hojas(
-                        comp_cat, "1. Por Categoria",
-                        comp_item, "2. Por Item",
+                        comp_cat_xl, "1. Por Categoria",
+                        comp_item_xl, "2. Por Item",
                         df_comp, "3. Detalle Documentos"
                     )
                     st.download_button(
@@ -491,25 +532,52 @@ def render(ctx):
                     df_cons['Costo_Consumo'] = df_cons['Monto_Kardex'] * -1
                     st.metric(f"Total Consumos ({moneda})", f"{simb} {df_cons['Costo_Consumo'].sum():,.2f}")
 
-                    cons_cat = df_cons.groupby(['AlmacenCodigo', 'TransaccionCodigo', 'Tipo_Categoria'], as_index=False).agg(
-                        Cantidad=('Cantidad', 'sum'),
-                        Costo_Total=('Costo_Consumo', 'sum')
-                    ).sort_values(by='Costo_Total', ascending=False)
+                    st.markdown("---")
+                    cs1, cs2 = st.columns(2)
+                    with cs1:
+                        cons_n1 = st.checkbox("Nivel 1: Categoría", value=True, key="cons_n1")
+                    with cs2:
+                        cons_n2 = st.checkbox("Nivel 2: Ítems", value=False, key="cons_n2")
 
-                    cons_item = df_cons.groupby(['AlmacenCodigo', 'TransaccionCodigo', 'Tipo_Categoria', 'Item', 'DescripcionLocal'], as_index=False).agg(
-                        Cantidad=('Cantidad', 'sum'),
-                        Costo_Total=('Costo_Consumo', 'sum')
-                    ).sort_values(by='Costo_Total', ascending=False)
+                    col_desc_cs = 'DescripcionLocal' if 'DescripcionLocal' in df_cons.columns else ('Descripcion' if 'Descripcion' in df_cons.columns else None)
 
-                    st.markdown("**Resumen de Consumos por Almacén, Transacción y Categoría**")
-                    vista_cons = cons_cat.copy()
-                    vista_cons['Cantidad'] = vista_cons['Cantidad'].map('{:,.2f}'.format)
-                    vista_cons['Costo_Total'] = vista_cons['Costo_Total'].map(lambda x: f"{simb} {x:,.2f}")
-                    st.dataframe(vista_cons, use_container_width=True)
+                    cols_agrup_cons = []
+                    if cons_n1: cols_agrup_cons.append('Tipo_Categoria')
+                    if cons_n2:
+                        cols_agrup_cons.append('Item')
+                        if col_desc_cs: cols_agrup_cons.append(col_desc_cs)
+
+                    if not cols_agrup_cons:
+                        st.info("💡 Activa al menos un nivel de agrupación (Categoría o Ítems) arriba.")
+                    else:
+                        resumen_cons = df_cons.groupby(cols_agrup_cons, as_index=False).agg(
+                            Cantidad=('Cantidad', 'sum'),
+                            Monto_Total=('Costo_Consumo', 'sum')
+                        ).sort_values(by='Monto_Total', ascending=False).reset_index(drop=True)
+
+                        fila_tot_cs = {c: '' for c in cols_agrup_cons}
+                        fila_tot_cs[cols_agrup_cons[0]] = 'TOTAL GENERAL'
+                        fila_tot_cs['Cantidad'] = resumen_cons['Cantidad'].sum()
+                        fila_tot_cs['Monto_Total'] = resumen_cons['Monto_Total'].sum()
+                        resumen_cons_tot = pd.concat([resumen_cons, pd.DataFrame([fila_tot_cs])], ignore_index=True)
+
+                        vista_cons = resumen_cons_tot.copy()
+                        vista_cons['Cantidad'] = vista_cons['Cantidad'].map('{:,.2f}'.format)
+                        vista_cons['Monto_Total'] = vista_cons['Monto_Total'].map(lambda x: f"{simb} {x:,.2f}")
+                        st.dataframe(vista_cons, use_container_width=True)
+
+                    cons_cat_xl = df_cons.groupby(['Tipo_Categoria'], as_index=False).agg(
+                        Cantidad=('Cantidad', 'sum'), Monto_Total=('Costo_Consumo', 'sum')
+                    ).sort_values(by='Monto_Total', ascending=False)
+
+                    cols_item_cs = ['Tipo_Categoria', 'Item'] + ([col_desc_cs] if col_desc_cs else [])
+                    cons_item_xl = df_cons.groupby(cols_item_cs, as_index=False).agg(
+                        Cantidad=('Cantidad', 'sum'), Monto_Total=('Costo_Consumo', 'sum')
+                    ).sort_values(by='Monto_Total', ascending=False)
 
                     excel_cons = exportar_excel_3_hojas(
-                        cons_cat, "1. Por Almacen y Categoria",
-                        cons_item, "2. Por Item",
+                        cons_cat_xl, "1. Por Categoria",
+                        cons_item_xl, "2. Por Item",
                         df_cons, "3. Detalle Movimientos"
                     )
                     st.download_button(
@@ -530,25 +598,52 @@ def render(ctx):
                 else:
                     st.metric(f"Valorización Producción ({moneda})", f"{simb} {df_prod['Monto_Kardex'].sum():,.2f}")
 
-                    prod_cat = df_prod.groupby(['TransaccionCodigo', 'AlmacenCodigo', 'Tipo_Categoria'], as_index=False).agg(
-                        Cantidad=('Cantidad', 'sum'),
-                        Monto_Total=('Monto_Kardex', 'sum')
-                    ).sort_values(by=['TransaccionCodigo', 'Monto_Total'], ascending=[True, False])
+                    st.markdown("---")
+                    pr1, pr2 = st.columns(2)
+                    with pr1:
+                        prod_n1 = st.checkbox("Nivel 1: Categoría", value=True, key="prod_n1")
+                    with pr2:
+                        prod_n2 = st.checkbox("Nivel 2: Ítems", value=False, key="prod_n2")
 
-                    prod_item = df_prod.groupby(['TransaccionCodigo', 'AlmacenCodigo', 'Tipo_Categoria', 'Item', 'DescripcionLocal'], as_index=False).agg(
-                        Cantidad=('Cantidad', 'sum'),
-                        Monto_Total=('Monto_Kardex', 'sum')
+                    col_desc_pr = 'DescripcionLocal' if 'DescripcionLocal' in df_prod.columns else ('Descripcion' if 'Descripcion' in df_prod.columns else None)
+
+                    cols_agrup_prod = []
+                    if prod_n1: cols_agrup_prod.append('Tipo_Categoria')
+                    if prod_n2:
+                        cols_agrup_prod.append('Item')
+                        if col_desc_pr: cols_agrup_prod.append(col_desc_pr)
+
+                    if not cols_agrup_prod:
+                        st.info("💡 Activa al menos un nivel de agrupación (Categoría o Ítems) arriba.")
+                    else:
+                        resumen_prod = df_prod.groupby(cols_agrup_prod, as_index=False).agg(
+                            Cantidad=('Cantidad', 'sum'),
+                            Monto_Total=('Monto_Kardex', 'sum')
+                        ).sort_values(by='Monto_Total', ascending=False).reset_index(drop=True)
+
+                        fila_tot_pr = {c: '' for c in cols_agrup_prod}
+                        fila_tot_pr[cols_agrup_prod[0]] = 'TOTAL GENERAL'
+                        fila_tot_pr['Cantidad'] = resumen_prod['Cantidad'].sum()
+                        fila_tot_pr['Monto_Total'] = resumen_prod['Monto_Total'].sum()
+                        resumen_prod_tot = pd.concat([resumen_prod, pd.DataFrame([fila_tot_pr])], ignore_index=True)
+
+                        vista_prod = resumen_prod_tot.copy()
+                        vista_prod['Cantidad'] = vista_prod['Cantidad'].map('{:,.2f}'.format)
+                        vista_prod['Monto_Total'] = vista_prod['Monto_Total'].map(lambda x: f"{simb} {x:,.2f}")
+                        st.dataframe(vista_prod, use_container_width=True)
+
+                    prod_cat_xl = df_prod.groupby(['Tipo_Categoria'], as_index=False).agg(
+                        Cantidad=('Cantidad', 'sum'), Monto_Total=('Monto_Kardex', 'sum')
                     ).sort_values(by='Monto_Total', ascending=False)
 
-                    st.markdown("**Resumen de Producción por Código (API / PRI) y Categoría**")
-                    vista_prod = prod_cat.copy()
-                    vista_prod['Cantidad'] = vista_prod['Cantidad'].map('{:,.2f}'.format)
-                    vista_prod['Monto_Total'] = vista_prod['Monto_Total'].map(lambda x: f"{simb} {x:,.2f}")
-                    st.dataframe(vista_prod, use_container_width=True)
+                    cols_item_pr = ['Tipo_Categoria', 'Item'] + ([col_desc_pr] if col_desc_pr else [])
+                    prod_item_xl = df_prod.groupby(cols_item_pr, as_index=False).agg(
+                        Cantidad=('Cantidad', 'sum'), Monto_Total=('Monto_Kardex', 'sum')
+                    ).sort_values(by='Monto_Total', ascending=False)
 
                     excel_prod = exportar_excel_3_hojas(
-                        prod_cat, "1. Por Transaccion y Cat",
-                        prod_item, "2. Por Item",
+                        prod_cat_xl, "1. Por Categoria",
+                        prod_item_xl, "2. Por Item",
                         df_prod, "3. Detalle Produccion"
                     )
                     st.download_button(
