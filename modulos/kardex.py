@@ -136,7 +136,7 @@ def render(ctx):
     p_fin = ctx["p_fin"]
     simb = "S/" if moneda == 'SOLES' else "$"
 
-    st.subheader(f"📦 Gestión de Kardex, Costos y Rentabilidad ({moneda})")
+    st.subheader(f"📦 Gestión de Kardex version mil, Costos y Rentabilidad ({moneda})")
 
     uploaded_kardex = st.file_uploader(
         "Sube el archivo Kardex (.parquet o .xlsx):",
