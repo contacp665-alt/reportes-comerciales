@@ -55,27 +55,44 @@ def render(ctx):
     df_act_base = df_final.copy()
     df_ventas_base = df_ventas_all.copy() if df_ventas_all is not None else None
 
-    # --- FILTRO TIPO DE VENTA DESDE EL MAESTRO DE ÍTEMS ---
+    # --- FILTRO TIPO DE VENTA DINÁMICO (SOLO MOVIMIENTOS DE LA EMPRESA/PERIODO) ---
     if df_maestro is not None and 'TipoVenta' in df_maestro.columns:
         df_m_tv = df_maestro[['Item', 'TipoVenta']].copy()
         df_m_tv['Item'] = df_m_tv['Item'].astype(str).str.strip()
         df_m_tv['TipoVenta'] = df_m_tv['TipoVenta'].fillna('SIN CLASIFICAR').astype(str).str.strip().str.upper()
 
-        opciones_tv = sorted(df_m_tv['TipoVenta'].unique().tolist())
-        sel_tv = st.multiselect(
-            "🏷️ Filtrar por Tipo de Venta / Ítem (Maestro):",
-            options=opciones_tv,
-            default=opciones_tv,
-            key="filtro_cat_tipoventa"
-        )
-        if not sel_tv:
-            st.warning("⚠️ Selecciona al menos un Tipo de Venta en el filtro superior para mostrar resultados.")
-            return
-
-        items_validos = set(df_m_tv[df_m_tv['TipoVenta'].isin(sel_tv)]['Item'])
-        df_act_base = df_act_base[df_act_base['ItemCodigo'].astype(str).str.strip().isin(items_validos)].copy()
+        # Identificar ítems presentes en la empresa y rango actual (y año anterior si hay histórico)
+        items_presentes = set(df_act_base['ItemCodigo'].astype(str).str.strip())
         if df_ventas_base is not None:
-            df_ventas_base = df_ventas_base[df_ventas_base['ItemCodigo'].astype(str).str.strip().isin(items_validos)].copy()
+            p_ini_ant = str(int(p_inicio) - 100)
+            p_fin_ant = str(int(p_fin) - 100)
+            mask_emp_per = (
+                (df_ventas_base['CompaniaSocio'].astype(str).str.strip() == empresa) &
+                (
+                    ((df_ventas_base['VoucherPeriodo'].astype(str).str.strip() >= str(p_inicio)) & (df_ventas_base['VoucherPeriodo'].astype(str).str.strip() <= str(p_fin))) |
+                    ((df_ventas_base['VoucherPeriodo'].astype(str).str.strip() >= p_ini_ant) & (df_ventas_base['VoucherPeriodo'].astype(str).str.strip() <= p_fin_ant))
+                )
+            )
+            items_presentes.update(df_ventas_base.loc[mask_emp_per, 'ItemCodigo'].astype(str).str.strip())
+
+        df_m_presentes = df_m_tv[df_m_tv['Item'].isin(items_presentes)]
+        opciones_tv = sorted(df_m_presentes['TipoVenta'].unique().tolist())
+
+        if opciones_tv:
+            sel_tv = st.multiselect(
+                "🏷️ Filtrar por Tipo de Venta (Activos en la empresa):",
+                options=opciones_tv,
+                default=opciones_tv,
+                key="filtro_cat_tipoventa"
+            )
+            if not sel_tv:
+                st.warning("⚠️ Selecciona al menos un Tipo de Venta en el filtro superior para mostrar resultados.")
+                return
+
+            items_validos = set(df_m_tv[df_m_tv['TipoVenta'].isin(sel_tv)]['Item'])
+            df_act_base = df_act_base[df_act_base['ItemCodigo'].astype(str).str.strip().isin(items_validos)].copy()
+            if df_ventas_base is not None:
+                df_ventas_base = df_ventas_base[df_ventas_base['ItemCodigo'].astype(str).str.strip().isin(items_validos)].copy()
     else:
         st.caption("ℹ️ Columna `TipoVenta` no detectada en el Maestro de Ítems (mostrando todos los registros).")
 
