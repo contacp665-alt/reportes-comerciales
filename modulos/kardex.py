@@ -167,23 +167,37 @@ def render(ctx):
         if 'CuentaContable' in df_m.columns:
             cols_m.append('CuentaContable')
 
+        # --- FILTRO TIPO DE VENTA DINÁMICO (SOLO MOVIMIENTOS DE LA EMPRESA/PERIODO) ---
         if 'TipoVenta' in df_m.columns:
             df_m['TipoVenta'] = df_m['TipoVenta'].fillna('SIN CLASIFICAR').astype(str).str.strip().str.upper()
             cols_m.append('TipoVenta')
-            
-            opciones_tv = sorted(df_m['TipoVenta'].unique().tolist())
-            sel_tv = st.multiselect(
-                "🏷️ Filtrar por Tipo de Venta / Ítem (Maestro):",
-                options=opciones_tv,
-                default=opciones_tv,
-                key="filtro_kardex_tipoventa"
+
+            p_ini_ant = str(int(p_inicio) - 100)
+            p_fin_ant = str(int(p_fin) - 100)
+            mask_emp_per = (
+                (df_k['CompaniaSocio'] == empresa) &
+                (
+                    ((df_k['Periodo'] >= str(p_inicio)) & (df_k['Periodo'] <= str(p_fin))) |
+                    ((df_k['Periodo'] >= p_ini_ant) & (df_k['Periodo'] <= p_fin_ant))
+                )
             )
-            if not sel_tv:
-                st.warning("⚠️ Selecciona al menos un Tipo de Venta en el filtro superior para mostrar resultados.")
-                return
-            
-            items_validos = set(df_m[df_m['TipoVenta'].isin(sel_tv)]['Item'])
-            df_k = df_k[df_k['Item'].isin(items_validos)].copy()
+            items_presentes = set(df_k.loc[mask_emp_per, 'Item'])
+            df_m_presentes = df_m[df_m['Item'].isin(items_presentes)]
+            opciones_tv = sorted(df_m_presentes['TipoVenta'].unique().tolist())
+
+            if opciones_tv:
+                sel_tv = st.multiselect(
+                    "🏷️ Filtrar por Tipo de Venta (Activos en la empresa):",
+                    options=opciones_tv,
+                    default=opciones_tv,
+                    key="filtro_kardex_tipoventa"
+                )
+                if not sel_tv:
+                    st.warning("⚠️ Selecciona al menos un Tipo de Venta en el filtro superior para mostrar resultados.")
+                    return
+
+                items_validos = set(df_m[df_m['TipoVenta'].isin(sel_tv)]['Item'])
+                df_k = df_k[df_k['Item'].isin(items_validos)].copy()
         else:
             st.caption("ℹ️ Columna `TipoVenta` no detectada en el Maestro de Ítems (mostrando todos los registros).")
         df_k_filt = df_k[
