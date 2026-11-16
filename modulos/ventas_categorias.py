@@ -39,7 +39,6 @@ def obtener_ventas_periodo(df_ventas, df_tc, df_maestro, empresa, moneda, p_ini,
         np.where(cond_lo_dol, df_res['Monto'] / df_res['Oficial Venta'], df_res['Monto'])
     )
     return df_res
-
 def render(ctx):
     df_final = ctx["df_final"]
     df_ventas_all = ctx.get("df_ventas")
@@ -53,6 +52,33 @@ def render(ctx):
 
     st.subheader(f"📊 Reporte Comercial por Categorías ({moneda})")
 
+    df_act_base = df_final.copy()
+    df_ventas_base = df_ventas_all.copy() if df_ventas_all is not None else None
+
+    # --- FILTRO TIPO DE VENTA DESDE EL MAESTRO DE ÍTEMS ---
+    if df_maestro is not None and 'TipoVenta' in df_maestro.columns:
+        df_m_tv = df_maestro[['Item', 'TipoVenta']].copy()
+        df_m_tv['Item'] = df_m_tv['Item'].astype(str).str.strip()
+        df_m_tv['TipoVenta'] = df_m_tv['TipoVenta'].fillna('SIN CLASIFICAR').astype(str).str.strip().str.upper()
+
+        opciones_tv = sorted(df_m_tv['TipoVenta'].unique().tolist())
+        sel_tv = st.multiselect(
+            "🏷️ Filtrar por Tipo de Venta / Ítem (Maestro):",
+            options=opciones_tv,
+            default=opciones_tv,
+            key="filtro_cat_tipoventa"
+        )
+        if not sel_tv:
+            st.warning("⚠️ Selecciona al menos un Tipo de Venta en el filtro superior para mostrar resultados.")
+            return
+
+        items_validos = set(df_m_tv[df_m_tv['TipoVenta'].isin(sel_tv)]['Item'])
+        df_act_base = df_act_base[df_act_base['ItemCodigo'].astype(str).str.strip().isin(items_validos)].copy()
+        if df_ventas_base is not None:
+            df_ventas_base = df_ventas_base[df_ventas_base['ItemCodigo'].astype(str).str.strip().isin(items_validos)].copy()
+    else:
+        st.caption("ℹ️ Columna `TipoVenta` no detectada en el Maestro de Ítems (mostrando todos los registros).")
+
     modo_cat = st.radio(
         "Modo de visualización:",
         ["📅 Periodo Actual", "📊 Comparativo Interanual (Año Anterior vs. Actual)"],
@@ -60,7 +86,6 @@ def render(ctx):
         key="modo_cat_radio"
     )
     st.markdown("---")
-
     col1, col2, col3 = st.columns(3)
     with col1:
         n1 = st.checkbox("Nivel 1: Categoría", value=True, key="cat_n1")
@@ -74,14 +99,18 @@ def render(ctx):
     if n2: columnas_agrupacion.append('Marca_Descripcion')
     if n3: 
         columnas_agrupacion.append('ItemCodigo')
-        if 'Descripcion' in df_final.columns: columnas_agrupacion.append('Descripcion')
+        if 'Descripcion' in df_act_base.columns: columnas_agrupacion.append('Descripcion')
 
     if not columnas_agrupacion:
         st.info("💡 Activa al menos un nivel de estructura arriba para visualizar el reporte.")
         return
 
     if modo_cat == "📅 Periodo Actual":
-        reporte_dinamico = df_final.groupby(columnas_agrupacion).agg({
+        if df_act_base.empty:
+            st.warning("⚠️ No se encontraron transacciones para el Tipo de Venta seleccionado en este periodo.")
+            return
+
+        reporte_dinamico = df_act_base.groupby(columnas_agrupacion).agg({
             'CantidadPedida': 'sum',
             'Monto_Convertido': 'sum'
         }).reset_index().sort_values(by='Monto_Convertido', ascending=False).reset_index(drop=True)
@@ -94,7 +123,7 @@ def render(ctx):
         vista_tabla['Monto_Convertido'] = vista_tabla['Monto_Convertido'].map(lambda x: f"{simb} {x:,.2f}")
 
         fila_total = {col: "" for col in columnas_agrupacion}
-        fila_total[columnas_agrupacion[0]] = "TOTAL GENERAL"
+        fila_total[next(iter(columnas_agrupacion))] = "TOTAL GENERAL"
         fila_total['CantidadPedida'] = f"{total_cantidades:,.0f}"
         fila_total['Monto_Convertido'] = f"{simb} {total_ventas:,.2f}"
         df_fila_total = pd.DataFrame([fila_total])
@@ -103,7 +132,7 @@ def render(ctx):
         st.dataframe(df_fila_total, use_container_width=True)
 
         fila_total_excel = {col: "" for col in columnas_agrupacion}
-        fila_total_excel[columnas_agrupacion[0]] = "TOTAL GENERAL"
+        fila_total_excel[next(iter(columnas_agrupacion))] = "TOTAL GENERAL"
         fila_total_excel['CantidadPedida'] = total_cantidades
         fila_total_excel['Monto_Convertido'] = total_ventas
         reporte_excel_final = pd.concat([reporte_dinamico, pd.DataFrame([fila_total_excel])], ignore_index=True)
@@ -120,7 +149,7 @@ def render(ctx):
             key="btn_descarga_cat"
         )
     else:
-        if df_ventas_all is None or df_tc is None or df_maestro is None:
+        if df_ventas_base is None or df_tc is None or df_maestro is None:
             st.error("⚠️ Faltan datos históricos en el contexto de `app.py` para calcular el comparativo.")
             return
 
@@ -131,11 +160,11 @@ def render(ctx):
 
         st.markdown(f"### Comparativo Comercial: {anio_ant} (`{p_inicio_ant}-{p_fin_ant}`) vs. {anio_act} (`{p_inicio}-{p_fin}`)")
 
-        df_ant = obtener_ventas_periodo(df_ventas_all, df_tc, df_maestro, empresa, moneda, p_inicio_ant, p_fin_ant)
-        df_act = df_final.copy()
+        df_ant = obtener_ventas_periodo(df_ventas_base, df_tc, df_maestro, empresa, moneda, p_inicio_ant, p_fin_ant)
+        df_act = df_act_base.copy()
 
         if df_ant.empty and df_act.empty:
-            st.warning("⚠️ No se encontraron transacciones de venta en ninguno de los dos periodos.")
+            st.warning("⚠️ No se encontraron transacciones de venta en ninguno de los dos periodos con el filtro seleccionado.")
             return
 
         v_ant = df_ant['Monto_Convertido'].sum() if not df_ant.empty else 0.0
@@ -152,7 +181,6 @@ def render(ctx):
         k2.metric(f"Ventas {anio_ant}", f"{simb} {v_ant:,.2f}")
         k3.metric(f"Unidades {anio_act}", f"{q_act:,.0f}", f"{var_q_pct:+.2f}% vs {anio_ant}")
         k4.metric(f"Unidades {anio_ant}", f"{q_ant:,.0f}")
-
         if n2:
             dim_graf = 'Marca_Descripcion'
             titulo_dim = 'Marcas'
@@ -216,7 +244,7 @@ def render(ctx):
         comp_df = comp_df.sort_values(by='Ventas_Act', ascending=False).reset_index(drop=True)
 
         fila_t = {col: "" for col in columnas_agrupacion}
-        fila_t[columnas_agrupacion[0]] = "TOTAL GENERAL"
+        fila_t[next(iter(columnas_agrupacion))] = "TOTAL GENERAL"
         fila_t['Cant_Ant'] = comp_df['Cant_Ant'].sum()
         fila_t['Cant_Act'] = comp_df['Cant_Act'].sum()
         fila_t['Var_Cant_%'] = var_q_pct
