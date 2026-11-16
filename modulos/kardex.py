@@ -31,7 +31,6 @@ MAPEO_TRANSACCIONES = {
     'TFI': 'OTROS',
     'TFE': 'OTROS',
 }
-
 def clasificar_movimiento(df):
     cod = df['TransaccionCodigo'].astype(str).str.strip().str.upper()
     comp = df['CompaniaSocio'].astype(str).str.strip()
@@ -80,7 +79,6 @@ def ejecutar_cruce_ventas_kardex(df_k_all, df_v_all, df_tc, df_maestro, cols_m, 
         Costo=('Costo_Positivo', 'sum')
     )
     del df_kv
-
     df_v_emp = df_v_all.loc[df_v_all['CompaniaSocio'].astype(str).str.strip() == empresa].copy()
     df_v_emp['Doc_Cruce'] = df_v_emp['NumeroDocumento'].fillna('').astype(str).str.strip()
     df_v_emp['Item'] = df_v_emp['ItemCodigo'].astype(str).str.strip()
@@ -160,13 +158,34 @@ def render(ctx):
         df_k['TransaccionCodigo'] = df_k['TransaccionCodigo'].astype(str).str.strip().str.upper()
         df_k['Item'] = df_k['Item'].astype(str).str.strip()
 
-        df_maestro['Item'] = df_maestro['Item'].astype(str).str.strip()
+        df_m = df_maestro.copy()
+        df_m['Item'] = df_m['Item'].astype(str).str.strip()
+        
         cols_m = ['Item', 'Tipo_Categoria', 'Marca_Descripcion']
-        if 'Descripcion' in df_maestro.columns:
+        if 'Descripcion' in df_m.columns:
             cols_m.append('Descripcion')
-        if 'CuentaContable' in df_maestro.columns:
+        if 'CuentaContable' in df_m.columns:
             cols_m.append('CuentaContable')
 
+        if 'TipoVenta' in df_m.columns:
+            df_m['TipoVenta'] = df_m['TipoVenta'].fillna('SIN CLASIFICAR').astype(str).str.strip().str.upper()
+            cols_m.append('TipoVenta')
+            
+            opciones_tv = sorted(df_m['TipoVenta'].unique().tolist())
+            sel_tv = st.multiselect(
+                "🏷️ Filtrar por Tipo de Venta / Ítem (Maestro):",
+                options=opciones_tv,
+                default=opciones_tv,
+                key="filtro_kardex_tipoventa"
+            )
+            if not sel_tv:
+                st.warning("⚠️ Selecciona al menos un Tipo de Venta en el filtro superior para mostrar resultados.")
+                return
+            
+            items_validos = set(df_m[df_m['TipoVenta'].isin(sel_tv)]['Item'])
+            df_k = df_k[df_k['Item'].isin(items_validos)].copy()
+        else:
+            st.caption("ℹ️ Columna `TipoVenta` no detectada en el Maestro de Ítems (mostrando todos los registros).")
         df_k_filt = df_k[
             (df_k['CompaniaSocio'] == empresa) &
             (df_k['Periodo'] >= str(p_inicio)) &
@@ -185,7 +204,7 @@ def render(ctx):
             col_monto_k = 'MontoTotal' if moneda == 'SOLES' else 'MontoTotalDolares'
             df_k_filt['Monto_Kardex'] = pd.to_numeric(df_k_filt[col_monto_k], errors='coerce').fillna(0)
 
-            df_k_filt = pd.merge(df_k_filt, df_maestro[cols_m], on='Item', how='left')
+            df_k_filt = pd.merge(df_k_filt, df_m[cols_m], on='Item', how='left')
             df_k_filt['Tipo_Categoria'] = df_k_filt['Tipo_Categoria'].fillna('SIN CATEGORÍA').str.strip()
             df_k_filt['Marca_Descripcion'] = df_k_filt['Marca_Descripcion'].fillna('SIN MARCA').str.strip()
 
@@ -217,16 +236,16 @@ def render(ctx):
             if k_n2: cols_agrup.append('Marca_Descripcion')
             if k_n3:
                 cols_agrup.append('Item')
-                if 'Descripcion' in df_maestro.columns: cols_agrup.append('Descripcion')
+                if 'Descripcion' in df_m.columns: cols_agrup.append('Descripcion')
 
             if modo_rent == "📅 Periodo Actual":
                 st.markdown(f"### Cruce de Despachos vs. Facturación ({p_inicio} - {p_fin} | {moneda})")
                 df_cruce = ejecutar_cruce_ventas_kardex(
-                    df_k, df_ventas_completo, df_tc, df_maestro, cols_m, empresa, moneda, p_inicio, p_fin
+                    df_k, df_ventas_completo, df_tc, df_m, cols_m, empresa, moneda, p_inicio, p_fin
                 )
 
                 if df_cruce.empty:
-                    st.warning(f"⚠️ No hay salidas por venta en el Kardex para {empresa} en el rango {p_inicio} - {p_fin}.")
+                    st.warning(f"⚠️ No hay salidas por venta en el Kardex para {empresa} en el rango {p_inicio} - {p_fin} con el filtro seleccionado.")
                 else:
                     tot_v = df_cruce['Ventas'].sum()
                     tot_c = df_cruce['Costo'].sum()
@@ -302,14 +321,14 @@ def render(ctx):
                 st.markdown(f"### Comparativo Interanual: {anio_ant} (`{p_inicio_ant}-{p_fin_ant}`) vs. {anio_act} (`{p_inicio}-{p_fin}`)")
 
                 df_cruce_ant = ejecutar_cruce_ventas_kardex(
-                    df_k, df_ventas_completo, df_tc, df_maestro, cols_m, empresa, moneda, p_inicio_ant, p_fin_ant
+                    df_k, df_ventas_completo, df_tc, df_m, cols_m, empresa, moneda, p_inicio_ant, p_fin_ant
                 )
                 df_cruce_act = ejecutar_cruce_ventas_kardex(
-                    df_k, df_ventas_completo, df_tc, df_maestro, cols_m, empresa, moneda, p_inicio, p_fin
+                    df_k, df_ventas_completo, df_tc, df_m, cols_m, empresa, moneda, p_inicio, p_fin
                 )
 
                 if df_cruce_ant.empty and df_cruce_act.empty:
-                    st.warning("⚠️ No se encontraron datos de ventas en Kardex para ninguno de los dos periodos.")
+                    st.warning("⚠️ No se encontraron datos de ventas en Kardex para ninguno de los dos periodos con el filtro seleccionado.")
                 else:
                     v_ant = df_cruce_ant['Ventas'].sum() if not df_cruce_ant.empty else 0.0
                     c_ant = df_cruce_ant['Costo'].sum() if not df_cruce_ant.empty else 0.0
@@ -423,7 +442,7 @@ def render(ctx):
                         st.dataframe(vista_comp, use_container_width=True)
 
                         keys_item = ['Tipo_Categoria', 'Marca_Descripcion', 'Item']
-                        if 'Descripcion' in df_maestro.columns: keys_item.append('Descripcion')
+                        if 'Descripcion' in df_m.columns: keys_item.append('Descripcion')
                         comp_por_item = construir_tabla_comparativa(keys_item)
 
                         dif_list = []
@@ -595,7 +614,6 @@ def render(ctx):
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="dl_kardex_cons"
                     )
-
         with tab_prod:
             if df_k_filt.empty:
                 st.info("No se registran movimientos de producción (API / PRI) en este periodo.")
@@ -672,4 +690,3 @@ def render(ctx):
 
     except Exception as e:
         st.error(f"❌ Error al procesar el archivo Kardex: {e}")
-
