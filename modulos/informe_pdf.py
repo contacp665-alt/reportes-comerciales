@@ -206,9 +206,19 @@ def obtener_datos_limpios_empresa(df_ventas_all, df_k_all, df_tc, df_maestro, em
     ventas["CantidadPedida"] = _numero_seguro(ventas["CantidadPedida"]) if "CantidadPedida" in ventas.columns else 0.0
     ventas = _convertir_montos(ventas, moneda)
     columnas_maestro = ["Item", "TipoVenta", "Tipo_Categoria", "Marca_Descripcion"]
+
+    # El consolidado de ventas puede traer atributos del artículo. Se eliminan
+    # antes del merge para evitar sufijos _x/_y y usar siempre el Maestro como
+    # fuente oficial de clasificación, categoría y marca.
+    columnas_duplicadas = [c for c in ["TipoVenta", "Tipo_Categoria", "Marca_Descripcion"] if c in ventas.columns]
+    if columnas_duplicadas:
+        ventas = ventas.drop(columns=columnas_duplicadas)
+
     ventas = ventas.merge(maestro[columnas_maestro], on="Item", how="left", validate="many_to_one")
     if "TipoVenta" not in ventas.columns:
-        raise ValueError("No se pudo incorporar TipoVenta desde el Maestro de Ítems al consolidado de ventas. Verifique que ItemCodigo coincida con Item.")
+        raise ValueError("No se pudo incorporar TipoVenta desde el Maestro de Ítems. Revise el cruce por código de artículo.")
+    if ventas["TipoVenta"].isna().all():
+        raise ValueError("El cruce con el Maestro no encontró coincidencias de artículos. Revise que ItemCodigo de ventas coincida con Item del Maestro.")
     ventas["ClienteNombre"] = _texto_columna(ventas, "ClienteNombre", "SIN NOMBRE").replace("", "SIN NOMBRE")
 
     if regla["es_rs"]:
