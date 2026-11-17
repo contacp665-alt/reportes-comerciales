@@ -119,7 +119,7 @@ def ejecutar_cruce_ventas_kardex(df_k_all, df_v_all, df_tc, df_maestro, cols_m, 
     df_cruce['Dif_Cant'] = (df_cruce['Cant_Kardex'] + df_cruce['Cant_Ventas']).round(2)
 
     cant_desp_abs = df_cruce['Cant_Kardex'].abs()
-    cond_parcial = (df_cruce['Cant_Kardex'] < 0) & (df_cruce['Cant_Ventas'] > 0) & (cant_desp_abs < df_cruce['Cant_Ventas'])
+    cond_parcial = (df_cruce['Cant_Kardex'] <= 0) & (df_cruce['Cant_Ventas'] > 0) & (cant_desp_abs < df_cruce['Cant_Ventas'])
     valor_unit = np.where(df_cruce['Cant_Ventas'] > 0, df_cruce['Ventas_Facturadas'] / df_cruce['Cant_Ventas'], 0.0)
 
     df_cruce['Ventas'] = np.where(
