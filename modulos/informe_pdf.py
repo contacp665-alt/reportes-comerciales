@@ -238,7 +238,7 @@ def crear_grafico_barras_png(df_comp, col_dim, col_ant, col_act, label_ant, labe
     buf.seek(0)
     return buf
 
-def construir_pdf_gerencial(regla, empresa, moneda, p_ini, p_fin, anio_ant, anio_act, kpis, texto_ia, img_g1, filas_t1, img_g2, filas_t2, img_g3, filas_t3, filas_det_kardex, filas_cli, mostrar_marcas):
+def construir_pdf_gerencial(regla, empresa, moneda, p_inicio, p_fin, anio_ant, anio_act, kpis, texto_ia, img_g1, filas_t1, img_g2, filas_t2, img_g3, filas_t3, filas_det_kardex, filas_cli, mostrar_marcas):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.4*cm, leftMargin=1.4*cm, topMargin=1.3*cm, bottomMargin=1.3*cm)
     styles = getSampleStyleSheet()
@@ -272,7 +272,7 @@ def construir_pdf_gerencial(regla, empresa, moneda, p_ini, p_fin, anio_ant, anio
 
     # --- PÁGINA 1: PORTADA EJECUTIVA, KPIS Y DIAGNÓSTICO ---
     elementos.append(Paragraph("INFORME EJECUTIVO DE CONTROL DE GESTIÓN", estilo_titulo))
-    elementos.append(Paragraph(f"<b>Empresa:</b> {regla['nombre']}  |  <b>Periodo:</b> {p_ini} - {p_fin} (vs. {anio_ant})  |  <b>Moneda:</b> {moneda}  |  <b>Emisión:</b> {datetime.now().strftime('%d/%m/%Y')}", estilo_sub))
+    elementos.append(Paragraph(f"<b>Empresa:</b> {regla['nombre']}  |  <b>Periodo:</b> {p_inicio} - {p_fin} (vs. {anio_ant})  |  <b>Moneda:</b> {moneda}  |  <b>Emisión:</b> {datetime.now().strftime('%d/%m/%Y')}", estilo_sub))
     elementos.append(Spacer(1, 0.15*cm))
 
     data_kpi = [
@@ -344,7 +344,7 @@ def construir_pdf_gerencial(regla, empresa, moneda, p_ini, p_fin, anio_ant, anio
 
     # --- PÁGINA 4: RANKING TOP 10 CLIENTES ---
     elementos.append(Paragraph("PRINCIPALES CLIENTES DEL PERIODO", estilo_titulo))
-    elementos.append(Paragraph(f"Top 10 clientes en líneas clave ({p_ini} - {p_fin} | {moneda})", estilo_sub))
+    elementos.append(Paragraph(f"Top 10 clientes en líneas clave ({p_inicio} - {p_fin} | {moneda})", estilo_sub))
     elementos.append(Spacer(1, 0.2*cm))
 
     t_cli = Table(filas_cli, colWidths=[9.8*cm, 2.6*cm, 3.4*cm, 2.2*cm])
