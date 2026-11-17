@@ -1,4 +1,8 @@
 # En las importaciones superiores:
+import streamlit as st
+import pandas as pd
+import numpy as np
+import importlib
 from modulos import ventas_categorias, rankings, kardex, resumen_anual, produccion_rentabilidad, informe_pdf
 
 importlib.reload(ventas_categorias)
