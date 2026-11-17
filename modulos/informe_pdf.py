@@ -70,6 +70,25 @@ def _texto_columna(df, columna, defecto=""):
     return df[columna].fillna(defecto).astype(str).str.strip()
 
 
+def _normalizar_encabezados(df):
+    """Limpia encabezados provenientes de Excel/CSV sin alterar los datos."""
+    if df is None:
+        return pd.DataFrame()
+    out = df.copy()
+    out.columns = [str(c).replace("\ufeff", "").strip() for c in out.columns]
+    # Acepta variantes frecuentes del nombre del campo en el Maestro.
+    mapa = {}
+    for col in out.columns:
+        clave = re.sub(r"[^a-z0-9]", "", col.lower())
+        if clave == "tipoventa" and col != "TipoVenta":
+            mapa[col] = "TipoVenta"
+        elif clave == "tipocategoria" and col != "Tipo_Categoria":
+            mapa[col] = "Tipo_Categoria"
+        elif clave == "marcadescripcion" and col != "Marca_Descripcion":
+            mapa[col] = "Marca_Descripcion"
+    return out.rename(columns=mapa)
+
+
 def _numero_seguro(serie):
     return pd.to_numeric(serie, errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
@@ -140,6 +159,9 @@ def obtener_datos_limpios_empresa(df_ventas_all, df_k_all, df_tc, df_maestro, em
     mediante regla['_error_validacion'] y no mediante un KeyError.
     """
     regla = dict(_regla_empresa(empresa))
+    df_maestro = _normalizar_encabezados(df_maestro)
+    df_ventas_all = _normalizar_encabezados(df_ventas_all)
+    df_k_all = _normalizar_encabezados(df_k_all) if df_k_all is not None else df_k_all
     vacio = pd.DataFrame()
     if df_ventas_all is None or df_ventas_all.empty:
         regla["_error_validacion"] = "El archivo histórico de ventas está vacío."
@@ -185,6 +207,8 @@ def obtener_datos_limpios_empresa(df_ventas_all, df_k_all, df_tc, df_maestro, em
     ventas = _convertir_montos(ventas, moneda)
     columnas_maestro = ["Item", "TipoVenta", "Tipo_Categoria", "Marca_Descripcion"]
     ventas = ventas.merge(maestro[columnas_maestro], on="Item", how="left", validate="many_to_one")
+    if "TipoVenta" not in ventas.columns:
+        raise ValueError("No se pudo incorporar TipoVenta desde el Maestro de Ítems al consolidado de ventas. Verifique que ItemCodigo coincida con Item.")
     ventas["ClienteNombre"] = _texto_columna(ventas, "ClienteNombre", "SIN NOMBRE").replace("", "SIN NOMBRE")
 
     if regla["es_rs"]:
@@ -225,6 +249,8 @@ def obtener_datos_limpios_empresa(df_ventas_all, df_k_all, df_tc, df_maestro, em
                     cruce["Ventas_Cruce"] = _numero_seguro(cruce["Ventas_Cruce"])
                     cruce["Utilidad"] = cruce["Ventas_Cruce"] - cruce["Costo"]
                     cruce = cruce.merge(maestro[columnas_maestro], on="Item", how="left", validate="many_to_one")
+                    if "TipoVenta" not in cruce.columns:
+                        raise ValueError("No se pudo incorporar TipoVenta al cruce de Kardex. Verifique la columna Item del Kardex y el campo Item del Maestro.")
                     if regla["es_rs"]:
                         cruce["Grupo_RS"] = np.where(cruce["TipoVenta"].isin(regla["tipos_mercaderia"]), "MERCADERÍA", "SERVICIOS")
 
@@ -758,4 +784,7 @@ def render(ctx):
             mime="application/pdf", key="dl_pdf_gerencial_final"
         )
     except Exception as exc:
+        import traceback
         st.error(f"No se pudo generar el informe. Detalle técnico: {exc}")
+        with st.expander("Ver detalle técnico para soporte"):
+            st.code(traceback.format_exc())
