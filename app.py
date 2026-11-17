@@ -12,6 +12,11 @@ importlib.reload(resumen_anual)
 importlib.reload(produccion_rentabilidad)
 importlib.reload(informe_pdf)
 
+st.set_page_config(page_title="Sistema de Reportes Contables", page_icon="📊", layout="wide")
+
+st.title("⚙️ PANEL INTERACTIVO DE CONTROL DE GESTIÓN")
+st.markdown("---")
+
 # En el diccionario MODULOS_ACTIVOS:
 MODULOS_ACTIVOS = {
     "📊 Ventas por Categorías": ventas_categorias.render,
