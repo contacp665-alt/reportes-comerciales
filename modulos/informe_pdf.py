@@ -111,7 +111,7 @@ def _convertir_montos(df, moneda, columna_origen="Monto", columna_destino="Venta
     tc = _numero_seguro(out["Oficial Venta"]) if "Oficial Venta" in out.columns else pd.Series(0.0, index=out.index)
     a_soles = (moneda == "SOLES") & (doc_moneda == "EX")
     a_dolares = (moneda != "SOLES") & (doc_moneda == "LO")
-    valores = monto.to_numpy(dtype=float)
+    valores = monto.to_numpy(dtype=float, copy=True)
     tipos = doc_moneda.to_numpy()
     tasas = tc.to_numpy(dtype=float)
     if moneda == "SOLES":
