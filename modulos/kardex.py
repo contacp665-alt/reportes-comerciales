@@ -108,15 +108,26 @@ def ejecutar_cruce_ventas_kardex(df_k_all, df_v_all, df_tc, df_maestro, cols_m, 
 
     ventas_agg = df_v_emp.groupby(['Doc_Cruce', 'Item'], as_index=False).agg(
         Cant_Ventas=('CantidadPedida', 'sum'),
-        Ventas=('Venta_Conv', 'sum')
+        Ventas_Facturadas=('Venta_Conv', 'sum')
     )
     del df_v_emp
 
-    df_cruce = pd.merge(kardex_agg, ventas_agg, on=['Doc_Cruce', 'Item'], how='left').fillna({'Cant_Ventas': 0, 'Ventas': 0})
+    df_cruce = pd.merge(kardex_agg, ventas_agg, on=['Doc_Cruce', 'Item'], how='left').fillna({'Cant_Ventas': 0, 'Ventas_Facturadas': 0})
     del kardex_agg, ventas_agg
     gc.collect()
 
     df_cruce['Dif_Cant'] = (df_cruce['Cant_Kardex'] + df_cruce['Cant_Ventas']).round(2)
+
+    cant_desp_abs = df_cruce['Cant_Kardex'].abs()
+    cond_parcial = (df_cruce['Cant_Kardex'] < 0) & (df_cruce['Cant_Ventas'] > 0) & (cant_desp_abs < df_cruce['Cant_Ventas'])
+    valor_unit = np.where(df_cruce['Cant_Ventas'] > 0, df_cruce['Ventas_Facturadas'] / df_cruce['Cant_Ventas'], 0.0)
+
+    df_cruce['Ventas'] = np.where(
+        cond_parcial,
+        valor_unit * cant_desp_abs,
+        df_cruce['Ventas_Facturadas']
+    )
+
     df_cruce['Utilidad'] = df_cruce['Ventas'] - df_cruce['Costo']
 
     df_cruce = pd.merge(df_cruce, df_maestro[cols_m], on='Item', how='left')
@@ -167,7 +178,6 @@ def render(ctx):
         if 'CuentaContable' in df_m.columns:
             cols_m.append('CuentaContable')
 
-        # --- FILTRO TIPO DE VENTA DINÁMICO (SOLO MOVIMIENTOS DE LA EMPRESA/PERIODO) ---
         if 'TipoVenta' in df_m.columns:
             df_m['TipoVenta'] = df_m['TipoVenta'].fillna('SIN CLASIFICAR').astype(str).str.strip().str.upper()
             cols_m.append('TipoVenta')
@@ -267,7 +277,7 @@ def render(ctx):
                     margen = (tot_u / tot_v * 100) if tot_v != 0 else 0
 
                     m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("Ventas Cruzadas", f"{simb} {tot_v:,.2f}")
+                    m1.metric("Ventas Cruzadas (Ajust.)", f"{simb} {tot_v:,.2f}")
                     m2.metric("Costo Kardex", f"{simb} {tot_c:,.2f}")
                     m3.metric("Utilidad Bruta", f"{simb} {tot_u:,.2f}")
                     m4.metric("Margen Bruto", f"{margen:.2f}%")
@@ -312,7 +322,7 @@ def render(ctx):
                             if df_dif.empty:
                                 st.success("✅ Todas las cantidades despachadas cuadran al 100% con las facturadas.")
                             else:
-                                st.dataframe(df_dif[['Doc_Cruce', 'Item', 'Tipo_Categoria', 'Cant_Kardex', 'Cant_Ventas', 'Dif_Cant', 'Costo', 'Ventas']], use_container_width=True)
+                                st.dataframe(df_dif[['Doc_Cruce', 'Item', 'Tipo_Categoria', 'Cant_Kardex', 'Cant_Ventas', 'Dif_Cant', 'Costo', 'Ventas_Facturadas', 'Ventas']], use_container_width=True)
 
                         excel_rent = exportar_excel_3_hojas(
                             resumen_export, "1. Resumen Gerencial",
