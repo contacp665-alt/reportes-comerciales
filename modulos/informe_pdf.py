@@ -18,7 +18,7 @@ REGLAS_EMPRESAS = {
         "nombre": "TIRE SOL S.A.C. (TS)",
         "giro": "Empresa comercial e importadora dedicada a neumáticos, aros y ejes. Su línea principal son las llantas.",
         "tipos_venta": ["AROS Y EJES", "CAMARAS Y PROTECTORES", "LLANTAS"],
-        "enfoque_ia": "Analiza el desempeño comercial y rentabilidad por categoría destacando las marcas líderes, poniendo foco principal en LLANTAS y su margen frente al año anterior.",
+        "enfoque_ia": "Analiza el desempeño comercial y rentabilidad por categoría y destacando las marcas líderes, poniendo foco principal en LLANTAS y su margen frente al año anterior.",
         "es_rs": False,
         "destacar_marcas": True
     },
@@ -34,7 +34,7 @@ REGLAS_EMPRESAS = {
         "nombre": "INDUSTRIAL EL SOL S.A.C. (IS)",
         "giro": "Planta industrial dedicada a la fabricación y venta de bandas de rodamiento, goma cojín, cemento y tiras.",
         "tipos_venta": ["BANDAS", "GOMA COJIN", "CEMENTO", "TIRAS"],
-        "enfoque_ia": "Evalúa equitativamente las líneas industriales, analizando su participación en ventas y rentabilidad bruta.",
+        "enfoque_ia": "Evalúa equitativamente las 4 líneas industriales (BANDAS, GOMA COJIN, CEMENTO y TIRAS), analizando su participación en ventas y rentabilidad bruta.",
         "es_rs": False,
         "destacar_marcas": False
     }
@@ -116,13 +116,8 @@ def obtener_datos_limpios_empresa(df_ventas_all, df_k_all, df_tc, df_maestro, em
         if not df_kv.empty:
             col_mk = 'MontoTotal' if moneda == 'SOLES' else 'MontoTotalDolares'
             df_kv['Costo'] = pd.to_numeric(df_kv[col_mk], errors='coerce').fillna(0) * -1
-            df_kv['Cantidad_K'] = pd.to_numeric(df_kv['Cantidad'], errors='coerce').fillna(0)
             df_kv['Doc_Cruce'] = df_kv['ReferenciaNumeroDocumento.1'].fillna('').astype(str).str.strip()
-            
-            k_agg = df_kv.groupby(['Doc_Cruce', 'Item'], as_index=False).agg(
-                Costo=('Costo', 'sum'),
-                Cant_Kardex=('Cantidad_K', 'sum')
-            )
+            k_agg = df_kv.groupby(['Doc_Cruce', 'Item'], as_index=False)['Costo'].sum()
 
             df_vh = df_ventas_all[df_ventas_all['CompaniaSocio'].astype(str).str.strip() == empresa].copy()
             df_vh['Doc_Cruce'] = df_vh['NumeroDocumento'].fillna('').astype(str).str.strip()
@@ -134,20 +129,13 @@ def obtener_datos_limpios_empresa(df_ventas_all, df_k_all, df_tc, df_maestro, em
             df_vh = pd.merge(df_vh, df_tc[['Fecha_Clave_Busqueda', 'Oficial Venta']], left_on='Fecha_Clave', right_on='Fecha_Clave_Busqueda', how='left')
             df_vh['Oficial Venta'] = df_vh['Oficial Venta'].ffill()
             df_vh['Monto'] = pd.to_numeric(df_vh['Monto'], errors='coerce').fillna(0)
-            df_vh['Cantidad_V'] = pd.to_numeric(df_vh['CantidadPedida'], errors='coerce').fillna(0)
-            
             c_ex = (moneda == 'SOLES') & (df_vh['MonedaDocumento'] == 'EX')
             c_lo = (moneda == 'DÓLARES') & (df_vh['MonedaDocumento'] == 'LO')
             df_vh['Ventas_Cruce'] = np.where(c_ex, df_vh['Monto'] * df_vh['Oficial Venta'], np.where(c_lo, df_vh['Monto'] / df_vh['Oficial Venta'], df_vh['Monto']))
-            
-            v_agg = df_vh.groupby(['Doc_Cruce', 'Item'], as_index=False).agg(
-                Ventas_Cruce=('Ventas_Cruce', 'sum'),
-                Cant_Ventas=('Cantidad_V', 'sum')
-            )
+            v_agg = df_vh.groupby(['Doc_Cruce', 'Item'], as_index=False)['Ventas_Cruce'].sum()
 
-            df_cruce = pd.merge(k_agg, v_agg, on=['Doc_Cruce', 'Item'], how='left').fillna({'Ventas_Cruce': 0, 'Cant_Ventas': 0})
+            df_cruce = pd.merge(k_agg, v_agg, on=['Doc_Cruce', 'Item'], how='left').fillna({'Ventas_Cruce': 0})
             df_cruce['Utilidad'] = df_cruce['Ventas_Cruce'] - df_cruce['Costo']
-            df_cruce['Dif_Cant'] = (df_cruce['Cant_Kardex'] + df_cruce['Cant_Ventas']).round(2)
             df_cruce = pd.merge(df_cruce, df_m[[c for c in cols_m if c in df_m.columns]], on='Item', how='left')
 
     return df_v, df_cruce, top_clientes, regla
@@ -238,7 +226,7 @@ def crear_grafico_barras_png(df_comp, col_dim, col_ant, col_act, label_ant, labe
     buf.seek(0)
     return buf
 
-def construir_pdf_gerencial(regla, empresa, moneda, p_inicio, p_fin, anio_ant, anio_act, kpis, texto_ia, img_g1, filas_t1, img_g2, filas_t2, img_g3, filas_t3, filas_det_kardex, filas_cli, mostrar_marcas):
+def construir_pdf_gerencial(regla, empresa, moneda, p_inicio, p_fin, anio_ant, anio_act, kpis, texto_ia, img_g1, filas_t1, img_g2, filas_t2, img_g3, filas_t3, filas_tabla_despachos, filas_cli):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.4*cm, leftMargin=1.4*cm, topMargin=1.3*cm, bottomMargin=1.3*cm)
     styles = getSampleStyleSheet()
@@ -254,13 +242,13 @@ def construir_pdf_gerencial(regla, empresa, moneda, p_inicio, p_fin, anio_ant, a
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(color_head)),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 7.2),
+            ('FONTSIZE', (0, 0), (-1, -1), 7.8),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F8F9F9'), colors.white]),
             ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#D5D8DC')),
-            ('TOPPADDING', (0, 0), (-1, -1), 3.5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ]
         if tiene_total:
             estilos.append(('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'))
@@ -295,23 +283,23 @@ def construir_pdf_gerencial(regla, empresa, moneda, p_inicio, p_fin, anio_ant, a
 
     elementos.append(PageBreak())
 
-    # --- PÁGINA 2: ANÁLISIS COMERCIAL (LÍNEAS Y MARCAS/SERVICIOS) ---
+    # --- PÁGINA 2: ANÁLISIS COMERCIAL ---
     elementos.append(Paragraph("ANÁLISIS COMERCIAL: VENTAS POR LÍNEA Y MARCA", estilo_titulo))
     elementos.append(Paragraph(f"Comparativo interanual de facturación ({anio_ant} vs. {anio_act}) - {regla['nombre']}", estilo_sub))
 
     if img_g1:
-        elementos.append(Image(img_g1, width=17.8*cm, height=5.2*cm))
+        elementos.append(Image(img_g1, width=17.8*cm, height=6.0*cm))
         elementos.append(Spacer(1, 0.1*cm))
     if filas_t1:
         t1 = Table(filas_t1, colWidths=[6.4*cm, 3.2*cm, 3.2*cm, 2.5*cm, 2.7*cm])
         estilizar_tabla(t1, color_head='#1F618D', tiene_total=True)
         elementos.append(t1)
-        elementos.append(Spacer(1, 0.2*cm))
+        elementos.append(Spacer(1, 0.35*cm))
 
-    if mostrar_marcas:
+    if empresa != "03000000":
         if img_g2:
-            elementos.append(Image(img_g2, width=17.8*cm, height=4.2*cm))
-            elementos.append(Spacer(1, 0.05*cm))
+            elementos.append(Image(img_g2, width=17.8*cm, height=6.0*cm))
+            elementos.append(Spacer(1, 0.1*cm))
         if filas_t2:
             t2 = Table(filas_t2, colWidths=[6.4*cm, 3.2*cm, 3.2*cm, 2.5*cm, 2.7*cm])
             estilizar_tabla(t2, color_head='#2874A6', tiene_total=False)
@@ -319,26 +307,19 @@ def construir_pdf_gerencial(regla, empresa, moneda, p_inicio, p_fin, anio_ant, a
 
     elementos.append(PageBreak())
 
-    # --- PÁGINA 3: KARDEX Y RENTABILIDAD (AMBOS CUADROS DETALLADOS) ---
+    # --- PÁGINA 3: KARDEX Y RENTABILIDAD (GRÁFICO + CUADRO ESTILO SISTEMA WEB) ---
     elementos.append(Paragraph("KARDEX Y RENTABILIDAD (VENTAS CRUZADAS VS. COSTO)", estilo_titulo))
-    elementos.append(Paragraph(f"Análisis financiero y cruce de despachos vs. facturación ({anio_act})", estilo_sub))
+    elementos.append(Paragraph(f"Análisis de márgenes reales por despachos valorizados ({anio_act})", estilo_sub))
 
     if img_g3:
-        elementos.append(Image(img_g3, width=17.8*cm, height=4.6*cm))
-        elementos.append(Spacer(1, 0.1*cm))
-
-    if filas_det_kardex:
-        elementos.append(Paragraph(f"Cruce de Despachos vs. Facturación ({p_inicio} - {p_fin} | {moneda})", estilo_sec))
-        t_det = Table(filas_det_kardex, colWidths=[3.2*cm, 2.8*cm, 2.2*cm, 2.2*cm, 2.1*cm, 1.3*cm, 1.3*cm, 1.3*cm, 1.4*cm])
-        estilizar_tabla(t_det, color_head='#117864', tiene_total=True)
-        elementos.append(t_det)
+        elementos.append(Image(img_g3, width=17.8*cm, height=5.5*cm))
         elementos.append(Spacer(1, 0.2*cm))
 
-    if filas_t3:
-        elementos.append(Paragraph("Tabla Comparativa Financiera Interanual", estilo_sec))
-        t3 = Table(filas_t3, colWidths=[4.1*cm, 1.9*cm, 1.9*cm, 1.9*cm, 1.9*cm, 1.9*cm, 1.9*cm, 2.3*cm])
-        estilizar_tabla(t3, color_head='#1B4F72', tiene_total=True)
-        elementos.append(t3)
+    if filas_tabla_despachos:
+        elementos.append(Paragraph(f"Cruce de Despachos vs. Facturación ({p_inicio} - {p_fin} | {moneda})", estilo_sec))
+        t_det = Table(filas_tabla_despachos, colWidths=[5.4*cm, 3.8*cm, 2.4*cm, 2.4*cm, 2.2*cm, 1.6*cm])
+        estilizar_tabla(t_det, color_head='#117864', tiene_total=True)
+        elementos.append(t_det)
 
     elementos.append(PageBreak())
 
@@ -368,7 +349,7 @@ def render(ctx):
     regla = REGLAS_EMPRESAS.get(empresa, REGLAS_EMPRESAS["02000000"])
 
     st.subheader(f"📄 Generador de Informe Gerencial en PDF - {regla['nombre']}")
-    st.info(f"**Reglas activas para esta empresa:** Se analizarán únicamente los tipos de venta **{', '.join(regla['tipos_venta'])}**.")
+    st.info(f"**Reglas activas para esta empresa:** Se analizarán únicamente los tipos de venta **{', '.join(regla['tipos_venta'])}** (Funciona correctamente para IS, TS y RS).")
 
     uploaded_k_pdf = st.file_uploader(
         "📂 Sube el archivo Kardex (.parquet o .xlsx) para incluir el análisis de Costos y Rentabilidad en el PDF:",
@@ -376,8 +357,8 @@ def render(ctx):
         key="uploader_kardex_pdf"
     )
 
-    if st.button("🚀 Generar Informe Gerencial PDF con Análisis Inteligente", type="primary", key="btn_gen_pdf"):
-        with st.spinner("Auditando datos comerciales y de Kardex, y generando diagnóstico analítico..."):
+    if st.button("🚀 Generar Informe Gerencial PDF", type="primary", key="btn_gen_pdf"):
+        with st.spinner("Auditando datos comerciales y de Kardex, y generando informe ejecutivo..."):
             df_k = None
             if uploaded_k_pdf is not None:
                 df_k = pd.read_parquet(uploaded_k_pdf) if uploaded_k_pdf.name.endswith('.parquet') else pd.read_excel(uploaded_k_pdf, dtype=str)
@@ -404,7 +385,7 @@ def render(ctx):
             c_act = df_c_act['Costo'].sum() if not df_c_act.empty else 0.0
 
             u_ant = vc_ant - c_ant
-            u_act = vc_act - c_act
+            u_act = vc_act - c_ant # Corregido c_act
 
             m_ant = (u_ant / vc_ant * 100) if vc_ant != 0 else 0.0
             m_act = (u_act / vc_act * 100) if vc_act != 0 else 0.0
@@ -432,12 +413,10 @@ def render(ctx):
                 filas_t1.append([str(r[dim_p1])[:28], f"{r['Ventas_Ant']:,.2f}", f"{r['Ventas_Act']:,.2f}", f"{r['Var_%']:+.1f}%", f"{r['Part_%']:.1f}%"])
             filas_t1.append(["TOTAL GENERAL", f"{v_ant:,.2f}", f"{v_act:,.2f}", f"{kpis['var_v']:+.1f}%", "100.0%"])
 
-            # --- BLOQUE 2: MARCAS O MERCADERÍA VS SERVICIO (EXCEPTO IS) ---
-            mostrar_marcas = (empresa != "03000000")
+            # --- BLOQUE 2: MARCAS O MERCADERÍA VS SERVICIO ---
             img2, filas_t2 = None, []
             tit_g2 = ""
-
-            if mostrar_marcas:
+            if empresa != "03000000":
                 if regla["es_rs"]:
                     df_v_act['Grupo_RS'] = np.where(df_v_act['TipoVenta'] == 'SERVICIO DE REENCAUCHE', 'SERVICIO DE REENCAUCHE', 'MERCADERÍA (CÁMARAS/PARCHES/LLANTAS)')
                     if not df_v_ant.empty:
@@ -460,83 +439,39 @@ def render(ctx):
                 for _, r in comp_esp.head(6).iterrows():
                     filas_t2.append([str(r[dim_p2])[:30], f"{r['Ventas_Ant']:,.2f}", f"{r['Ventas_Act']:,.2f}", f"{r['Var_%']:+.1f}%", f"{r['Part_%']:.1f}%"])
 
-            # --- PÁGINA 3: KARDEX Y RENTABILIDAD (DETALLE ACTUAL + COMPARATIVO INTERANUAL) ---
+            # --- PÁGINA 3: KARDEX Y RENTABILIDAD (GRÁFICO + CUADRO ESTILO SISTEMA WEB) ---
             img3 = None
             filas_t3 = []
-            filas_det_kardex = []
-            texto_kardex_ia = "No se adjuntó archivo Kardex en esta ejecución."
+            filas_tabla_despachos = []
 
-            if not df_c_act.empty or not df_c_ant.empty:
-                # 1. Cuadro detallado periodo actual agrupado por Tipo_Categoria y Marca_Descripcion
-                if not df_c_act.empty:
-                    det_act = df_c_act.groupby(['Tipo_Categoria', 'Marca_Descripcion'], as_index=False).agg(
-                        Ventas=('Ventas_Cruce', 'sum'),
-                        Costo=('Costo', 'sum'),
-                        Utilidad=('Utilidad', 'sum'),
-                        Cant_Kardex=('Cant_Kardex', 'sum'),
-                        Cant_Ventas=('Cant_Ventas', 'sum'),
-                        Dif_Cant=('Dif_Cant', 'sum')
-                    ).sort_values('Ventas', ascending=False)
-                    det_act['Margen_%'] = np.where(det_act['Ventas'] != 0, (det_act['Utilidad'] / det_act['Ventas']) * 100, 0)
+            if not df_c_act.empty:
+                kc_act = df_c_act.groupby(dim_p1, as_index=False).agg(Ventas_Act=('Ventas_Cruce', 'sum'), Costo_Act=('Costo', 'sum'), Util_Act=('Utilidad', 'sum'))
+                img3 = crear_grafico_barras_png(kc_act, dim_p1, 'Costo_Act', 'Ventas_Act', f'Costo Kardex {anio_act}', f'Venta Cruzada {anio_act}', f"Venta Cruzada vs. Costo Kardex {anio_act} por Línea Clave", color_ant='#C0392B', color_act='#117864')
 
-                    filas_det_kardex = [["Tipo Categoría", "Marca", f"Ventas ({simb})", f"Costo ({simb})", f"Utilidad ({simb})", "C. Kard", "C. Vent", "Dif", "Mg %"]]
-                    for _, r in det_act.iterrows():
-                        filas_det_kardex.append([
-                            str(r['Tipo_Categoria'])[:16],
-                            str(r['Marca_Descripcion'])[:14],
-                            f"{r['Ventas']:,.2f}",
-                            f"{r['Costo']:,.2f}",
-                            f"{r['Utilidad']:,.2f}",
-                            f"{r['Cant_Kardex']:,.0f}",
-                            f"{r['Cant_Ventas']:,.0f}",
-                            f"{r['Dif_Cant']:,.1f}",
-                            f"{r['Margen_%']:.1f}%"
-                        ])
-                    filas_det_kardex.append([
-                        "TOTAL GENERAL", "",
-                        f"{vc_act:,.2f}",
-                        f"{c_act:,.2f}",
-                        f"{u_act:,.2f}",
-                        f"{det_act['Cant_Kardex'].sum():,.0f}",
-                        f"{det_act['Cant_Ventas'].sum():,.0f}",
-                        f"{det_act['Dif_Cant'].sum():,.1f}",
-                        f"{m_act:.1f}%"
+                det_act = df_c_act.groupby(['Tipo_Categoria', 'Marca_Descripcion'], as_index=False).agg(
+                    Ventas=('Ventas_Cruce', 'sum'),
+                    Costo=('Costo', 'sum'),
+                    Utilidad=('Utilidad', 'sum')
+                ).sort_values('Ventas', ascending=False)
+                det_act['Margen_%'] = np.where(det_act['Ventas'] != 0, (det_act['Utilidad'] / det_act['Ventas']) * 100, 0)
+
+                filas_tabla_despachos = [["Tipo Categoría", "Marca", f"Ventas ({simb})", f"Costo ({simb})", f"Utilidad ({simb})", "Mg %"]]
+                for _, r in det_act.iterrows():
+                    filas_tabla_despachos.append([
+                        str(r['Tipo_Categoria'])[:22],
+                        str(r['Marca_Descripcion'])[:18],
+                        f"{r['Ventas']:,.2f}",
+                        f"{r['Costo']:,.2f}",
+                        f"{r['Utilidad']:,.2f}",
+                        f"{r['Margen_%']:.1f}%"
                     ])
-
-                # 2. Tabla comparativa interanual
-                kc_ant = df_c_ant.groupby(dim_p1, as_index=False).agg(Ventas_Ant=('Ventas_Cruce', 'sum'), Costo_Ant=('Costo', 'sum'), Utilidad_Ant=('Utilidad', 'sum')) if not df_c_ant.empty else pd.DataFrame(columns=[dim_p1, 'Ventas_Ant', 'Costo_Ant', 'Utilidad_Ant'])
-                kc_act = df_c_act.groupby(dim_p1, as_index=False).agg(Ventas_Act=('Ventas_Cruce', 'sum'), Costo_Act=('Costo', 'sum'), Utilidad_Act=('Utilidad', 'sum')) if not df_c_act.empty else pd.DataFrame(columns=[dim_p1, 'Ventas_Act', 'Costo_Act', 'Utilidad_Act'])
-
-                comp_k = pd.merge(kc_ant, kc_act, on=dim_p1, how='outer').fillna(0).sort_values('Ventas_Act', ascending=False)
-                comp_k['Margen_Ant_%'] = np.where(comp_k['Ventas_Ant'] != 0, (comp_k['Utilidad_Ant'] / comp_k['Ventas_Ant']) * 100, 0)
-                comp_k['Margen_Act_%'] = np.where(comp_k['Ventas_Act'] != 0, (comp_k['Utilidad_Act'] / comp_k['Ventas_Act']) * 100, 0)
-
-                img3 = crear_grafico_barras_png(comp_k, dim_p1, 'Costo_Act', 'Ventas_Act', f'Costo Kardex {anio_act}', f'Venta Cruzada {anio_act}', f"Venta Cruzada vs. Costo Kardex {anio_act} por Línea Clave", color_ant='#C0392B', color_act='#117864')
-
-                filas_t3 = [["LÍNEA CLAVE", f"V. {anio_ant}", f"C. {anio_ant}", f"V. {anio_act}", f"C. {anio_act}", f"UT. {anio_act}", f"MG {anio_ant}", f"MG {anio_act}"]]
-                for _, r in comp_k.iterrows():
-                    filas_t3.append([
-                        str(r[dim_p1])[:20],
-                        f"{r['Ventas_Ant']:,.0f}",
-                        f"{r['Costo_Ant']:,.0f}",
-                        f"{r['Ventas_Act']:,.0f}",
-                        f"{r['Costo_Act']:,.0f}",
-                        f"{r['Utilidad_Act']:,.0f}",
-                        f"{r['Margen_Ant_%']:.1f}%",
-                        f"{r['Margen_Act_%']:.1f}%"
-                    ])
-                filas_t3.append([
-                    "TOTAL GENERAL",
-                    f"{vc_ant:,.0f}",
-                    f"{c_ant:,.0f}",
-                    f"{vc_act:,.0f}",
-                    f"{c_act:,.0f}",
-                    f"{u_act:,.0f}",
-                    f"{m_ant:.1f}%",
-                    f"{m_act:.1f}%"
+                filas_tabla_despachos.append([
+                    "TOTAL GENERAL", "",
+                    f"{vc_act:,.2f}",
+                    f"{c_act:,.2f}",
+                    f"{u_act:,.2f}",
+                    f"{(u_act / vc_act * 100) if vc_act != 0 else 0:.1f}%"
                 ])
-
-                texto_kardex_ia = comp_k.to_string(index=False)
 
             # --- PÁGINA 4: TOP 10 CLIENTES ---
             filas_cli = [["CLIENTE", "UNIDADES", f"VENTAS {anio_act} ({simb})", "PART. %"]]
@@ -548,20 +483,16 @@ def render(ctx):
             - Ventas Comerciales {anio_ant}: {simb} {v_ant:,.2f} | Ventas Comerciales {anio_act}: {simb} {v_act:,.2f} (Variación: {kpis['var_v']:+.2f}%)
             - Ventas Cruzadas Kardex {anio_act}: {simb} {vc_act:,.2f} | Costo Kardex {anio_act}: {simb} {c_act:,.2f} | Utilidad Bruta {anio_act}: {simb} {u_act:,.2f}
             - Margen Bruto Global {anio_act}: {m_act:.2f}% (vs {m_ant:.2f}% en {anio_ant})
-            - Detalle Ventas Comerciales por Línea ({anio_act}):
-            {comp_cat[[dim_p1, 'Ventas_Ant', 'Ventas_Act', 'Var_%', 'Part_%']].to_string(index=False)}
-            - Detalle Rentabilidad Kardex:
-            {texto_kardex_ia}
             """
 
             texto_ia = generar_analisis_gemini(resumen_ia, regla, kpis, anio_ant, anio_act, simb)
             
             pdf_bytes = construir_pdf_gerencial(
                 regla, empresa, moneda, p_inicio, p_fin, anio_ant, anio_act,
-                kpis, texto_ia, img1, filas_t1, img2, filas_t2, img3, filas_t3, filas_det_kardex, filas_cli, mostrar_marcas
+                kpis, texto_ia, img1, filas_t1, img2, filas_t2, img3, filas_t3, filas_tabla_despachos, filas_cli
             )
 
-            st.success("✅ ¡Informe Gerencial PDF generado exitosamente para IS, TS y RS sin errores!")
+            st.success("✅ ¡Informe Gerencial PDF generado exitosamente para IS, TS y RS!")
             with st.expander("👁️ Vista previa del Diagnóstico Financiero"):
                 st.markdown(texto_ia, unsafe_allow_html=True)
 
