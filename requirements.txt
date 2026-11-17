@@ -4,3 +4,6 @@ openpyxl
 plotly
 numpy
 pyarrow
+reportlab
+matplotlib
+google-genai
