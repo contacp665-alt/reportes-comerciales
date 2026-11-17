@@ -1,28 +1,23 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import importlib
-from modulos import ventas_categorias, rankings, kardex, resumen_anual, produccion_rentabilidad
+# En las importaciones superiores:
+from modulos import ventas_categorias, rankings, kardex, resumen_anual, produccion_rentabilidad, informe_pdf
 
 importlib.reload(ventas_categorias)
 importlib.reload(rankings)
 importlib.reload(kardex)
 importlib.reload(resumen_anual)
 importlib.reload(produccion_rentabilidad)
+importlib.reload(informe_pdf)
 
-
-st.set_page_config(page_title="Sistema de Reportes Contables", page_icon="📊", layout="wide")
-
-st.title("⚙️ PANEL INTERACTIVO DE CONTROL DE GESTIÓN")
-st.markdown("---")
-
+# En el diccionario MODULOS_ACTIVOS:
 MODULOS_ACTIVOS = {
     "📊 Ventas por Categorías": ventas_categorias.render,
     "🏆 Top Productos y Clientes": rankings.render,
     "📦 Kardex y Rentabilidad": kardex.render,
     "📈 Resumen Anual Mensual": resumen_anual.render,
     "⚙️ Producción vs. Costo vs. Venta": produccion_rentabilidad.render,
+    "📄 Informe Gerencial PDF": informe_pdf.render,
 }
+
 
 # Función con caché para lectura ultrarrápida (.parquet o .xlsx)
 @st.cache_data(show_spinner="Cargando archivo en memoria...")
