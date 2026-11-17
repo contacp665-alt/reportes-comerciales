@@ -65,7 +65,6 @@ def obtener_datos_limpios_empresa(df_ventas_all, df_k_all, df_tc, df_maestro, em
         df_m['TipoVenta'] = 'GENERAL'
         items_validos = set(df_m['Item'])
 
-    # Filtrar Ventas del periodo
     df_v = df_ventas_all[
         (df_ventas_all['CompaniaSocio'].astype(str).str.strip() == empresa) &
         (df_ventas_all['VoucherPeriodo'].astype(str).str.strip() >= str(p_ini)) &
@@ -93,14 +92,12 @@ def obtener_datos_limpios_empresa(df_ventas_all, df_k_all, df_tc, df_maestro, em
     cols_m = ['Item', 'Tipo_Categoria', 'Marca_Descripcion', 'TipoVenta']
     df_v = pd.merge(df_v, df_m[cols_m], on='Item', how='left')
 
-    # Top Clientes limpios
     df_v['ClienteNombre'] = df_v.get('ClienteNombre', pd.Series(['SIN NOMBRE']*len(df_v))).fillna('SIN NOMBRE').astype(str).str.strip()
     top_clientes = df_v.groupby('ClienteNombre', as_index=False).agg(
         Unidades=('CantidadPedida', 'sum'),
         Ventas=('Venta_Conv', 'sum')
     ).sort_values('Ventas', ascending=False).head(10)
 
-    # Cruce con Kardex (si fue cargado)
     df_cruce = pd.DataFrame()
     if df_k_all is not None and not df_k_all.empty:
         df_kv = df_k_all[
@@ -153,44 +150,52 @@ def generar_analisis_gemini(resumen_texto, regla):
     {resumen_texto}
 
     Estructura tu análisis exactamente en 3 párrafos claros con subtítulos en negrita (usa etiquetas HTML <b>...</b> para negritas, no uses asteriscos markdown):
-    1. <b>Diagnóstico Comercial y Crecimiento:</b> Evalúa la evolución de ventas frente al año anterior y qué líneas lideran.
-    2. <b>Análisis de Rentabilidad y Márgenes:</b> Evalúa el comportamiento de costos, utilidad bruta y márgenes.
-    3. <b>Foco Estratégico y Recomendaciones:</b> Señala alertas o oportunidades accionables según el giro de la empresa.
+    1. <b>Diagnóstico Comercial y Crecimiento:</b> Evalúa la evolución de ventas comerciales frente al año anterior y qué líneas o marcas lideran.
+    2. <b>Análisis de Rentabilidad y Costos Kardex:</b> Evalúa el comportamiento de las ventas cruzadas, el costo de ventas, utilidad bruta y márgenes porcentuales.
+    3. <b>Foco Estratégico y Recomendaciones:</b> Señala alertas o oportunidades accionables según el giro operativo de la empresa.
     """
-    try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
-        return response.text.strip()
-    except Exception as e:
-        return f"Análisis automático no disponible en este momento ({e}). Revisa las tablas adjuntas para el detalle numérico."
+    client = genai.Client(api_key=api_key)
+    modelos_probar = ["gemini-3.8-flash", "gemini-2.5-flash-latest", "gemini-2.0-flash"]
+    ultimo_error = ""
 
-def crear_grafico_barras_png(df_comp, col_dim, anio_ant, anio_act, titulo, simb):
-    fig, ax = plt.subplots(figsize=(7.5, 3.2), dpi=150)
+    for modelo in modelos_probar:
+        try:
+            response = client.models.generate_content(
+                model=modelo,
+                contents=prompt
+            )
+            if response and response.text:
+                return response.text.strip()
+        except Exception as e:
+            ultimo_error = str(e)
+            continue
+
+    return f"Análisis automático no disponible en este momento ({ultimo_error}). Revisa las tablas adjuntas para el detalle numérico."
+
+def crear_grafico_barras_png(df_comp, col_dim, col_ant, col_act, label_ant, label_act, titulo, color_ant='#95A5A6', color_act='#1F618D'):
+    fig, ax = plt.subplots(figsize=(7.6, 2.7), dpi=150)
     top = df_comp.head(6).copy()
     labels = [str(x)[:18] for x in top[col_dim]]
     x = np.arange(len(labels))
     width = 0.36
 
-    rects1 = ax.bar(x - width/2, top['Ventas_Ant'], width, label=f'Ventas {anio_ant}', color='#95A5A6')
-    rects2 = ax.bar(x + width/2, top['Ventas_Act'], width, label=f'Ventas {anio_act}', color='#1F618D')
+    rects1 = ax.bar(x - width/2, top[col_ant], width, label=label_ant, color=color_ant)
+    rects2 = ax.bar(x + width/2, top[col_act], width, label=label_act, color=color_act)
 
-    ax.set_title(titulo, fontsize=10, fontweight='bold', color='#1C2833', pad=12)
+    ax.set_title(titulo, fontsize=9.5, fontweight='bold', color='#1C2833', pad=10)
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=15, ha='right', fontsize=8)
-    ax.tick_params(axis='y', labelsize=8)
+    ax.set_xticklabels(labels, rotation=12, ha='right', fontsize=7.5)
+    ax.tick_params(axis='y', labelsize=7.5)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.grid(axis='y', linestyle='--', alpha=0.4)
-    ax.legend(frameon=False, fontsize=8)
+    ax.legend(frameon=False, fontsize=7.5)
 
     for rect in rects2:
         h = rect.get_height()
         if h > 0:
             ax.annotate(f"{h:,.0f}", xy=(rect.get_x() + rect.get_width()/2, h),
-                        xytext=(0, 3), textcoords="offset points", ha='center', va='bottom', fontsize=7, fontweight='bold', color='#1F618D')
+                        xytext=(0, 2), textcoords="offset points", ha='center', va='bottom', fontsize=6.5, fontweight='bold', color=color_act)
 
     plt.tight_layout()
     buf = io.BytesIO()
@@ -198,47 +203,55 @@ def crear_grafico_barras_png(df_comp, col_dim, anio_ant, anio_act, titulo, simb)
     plt.close(fig)
     buf.seek(0)
     return buf
-def construir_pdf_gerencial(regla, empresa, moneda, p_ini, p_fin, anio_ant, anio_act, kpis, texto_ia, img_graf1, img_graf2, df_tabla_cat, df_tabla_esp, df_clientes):
+def construir_pdf_gerencial(regla, empresa, moneda, p_ini, p_fin, anio_ant, anio_act, kpis, texto_ia, img_g1, filas_t1, img_g2, filas_t2, img_g3, filas_t3, filas_cli):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.4*cm, leftMargin=1.4*cm, topMargin=1.3*cm, bottomMargin=1.3*cm)
     styles = getSampleStyleSheet()
     simb = "S/" if moneda == "SOLES" else "$"
 
-    estilo_titulo = ParagraphStyle('TituloCorp', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#1B4F72'), spaceAfter=4)
-    estilo_sub = ParagraphStyle('SubCorp', parent=styles['Normal'], fontSize=9.5, textColor=colors.HexColor('#566573'), spaceAfter=12)
-    estilo_sec = ParagraphStyle('SecCorp', parent=styles['Heading2'], fontSize=11.5, textColor=colors.HexColor('#1F618D'), spaceBefore=10, spaceAfter=6)
-    estilo_texto = ParagraphStyle('BodyCorp', parent=styles['Normal'], fontSize=9.5, leading=14, alignment=TA_JUSTIFY, textColor=colors.HexColor('#2C3E50'), spaceAfter=8)
+    estilo_titulo = ParagraphStyle('TituloCorp', parent=styles['Heading1'], fontSize=14.5, textColor=colors.HexColor('#1B4F72'), spaceAfter=3)
+    estilo_sub = ParagraphStyle('SubCorp', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#566573'), spaceAfter=8)
+    estilo_sec = ParagraphStyle('SecCorp', parent=styles['Heading2'], fontSize=10.5, textColor=colors.HexColor('#1F618D'), spaceBefore=6, spaceAfter=4)
+    estilo_texto = ParagraphStyle('BodyCorp', parent=styles['Normal'], fontSize=9.2, leading=13.5, alignment=TA_JUSTIFY, textColor=colors.HexColor('#2C3E50'), spaceAfter=7)
+
+    def estilizar_tabla(tabla_obj, color_head='#1F618D', tiene_total=True):
+        estilos = [
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(color_head)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7.8),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F8F9F9'), colors.white]),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#D5D8DC')),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]
+        if tiene_total:
+            estilos.append(('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'))
+            estilos.append(('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#EBF5FB')))
+        tabla_obj.setStyle(TableStyle(estilos))
+        return tabla_obj
 
     elementos = []
 
     # --- PÁGINA 1: PORTADA EJECUTIVA, KPIS Y DIAGNÓSTICO GEMINI ---
     elementos.append(Paragraph("INFORME EJECUTIVO DE CONTROL DE GESTIÓN", estilo_titulo))
     elementos.append(Paragraph(f"<b>Empresa:</b> {regla['nombre']}  |  <b>Periodo:</b> {p_ini} - {p_fin} (vs. {anio_ant})  |  <b>Moneda:</b> {moneda}  |  <b>Emisión:</b> {datetime.now().strftime('%d/%m/%Y')}", estilo_sub))
-    elementos.append(Spacer(1, 0.2*cm))
+    elementos.append(Spacer(1, 0.15*cm))
 
-    # Tabla de KPIs principales
     data_kpi = [
         ["INDICADOR CLAVE", f"PERIODO {anio_ant}", f"PERIODO {anio_act}", "VARIACIÓN"],
-        ["Ventas Netas (Líneas Clave)", f"{simb} {kpis['v_ant']:,.2f}", f"{simb} {kpis['v_act']:,.2f}", f"{kpis['var_v']:+.2f}%"],
+        ["Ventas Comerciales (Facturación)", f"{simb} {kpis['v_ant']:,.2f}", f"{simb} {kpis['v_act']:,.2f}", f"{kpis['var_v']:+.2f}%"],
+        ["Ventas Cruzadas (Despachos Kardex)", f"{simb} {kpis['vc_ant']:,.2f}", f"{simb} {kpis['vc_act']:,.2f}", f"{kpis['var_vc']:+.2f}%"],
         ["Costo de Ventas (Kardex)", f"{simb} {kpis['c_ant']:,.2f}", f"{simb} {kpis['c_act']:,.2f}", f"{kpis['var_c']:+.2f}%"],
-        ["Utilidad Bruta", f"{simb} {kpis['u_ant']:,.2f}", f"{simb} {kpis['u_act']:,.2f}", f"{kpis['var_u']:+.2f}%"],
+        ["Utilidad Bruta (Kardex)", f"{simb} {kpis['u_ant']:,.2f}", f"{simb} {kpis['u_act']:,.2f}", f"{kpis['var_u']:+.2f}%"],
         ["Margen Bruto (%)", f"{kpis['m_ant']:.2f}%", f"{kpis['m_act']:.2f}%", f"{kpis['m_act'] - kpis['m_ant']:+.2f} pp"],
     ]
-    t_kpi = Table(data_kpi, colWidths=[6.2*cm, 3.8*cm, 3.8*cm, 3.8*cm])
-    t_kpi.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B4F72')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F8F9F9'), colors.white]),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5D8DC')),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-    ]))
+    t_kpi = Table(data_kpi, colWidths=[6.8*cm, 3.8*cm, 3.8*cm, 3.6*cm])
+    estilizar_tabla(t_kpi, color_head='#1B4F72', tiene_total=False)
     elementos.append(t_kpi)
-    elementos.append(Spacer(1, 0.4*cm))
+    elementos.append(Spacer(1, 0.35*cm))
 
     elementos.append(Paragraph("DIAGNÓSTICO TÉCNICO E INTERPRETACIÓN (IA)", estilo_sec))
     for parrafo in texto_ia.split('\n'):
@@ -247,75 +260,54 @@ def construir_pdf_gerencial(regla, empresa, moneda, p_ini, p_fin, anio_ant, anio
 
     elementos.append(PageBreak())
 
-    # --- PÁGINA 2: GRÁFICOS COMPARATIVOS Y TABLA DE RENTABILIDAD ---
-    elementos.append(Paragraph("ANÁLISIS DE LÍNEAS DE NEGOCIO Y RENTABILIDAD", estilo_titulo))
-    elementos.append(Paragraph(f"Comparativo interanual filtrado por líneas principales de {regla['nombre']}", estilo_sub))
+    # --- PÁGINA 2: ANÁLISIS COMERCIAL (GRÁFICO + TABLA DEBAJO EN AMBOS BLOQUES) ---
+    elementos.append(Paragraph("ANÁLISIS COMERCIAL: VENTAS POR LÍNEA Y MARCA", estilo_titulo))
+    elementos.append(Paragraph(f"Comparativo interanual de facturación ({anio_ant} vs. {anio_act}) - {regla['nombre']}", estilo_sub))
 
-    if img_graf1:
-        elementos.append(Image(img_graf1, width=17.5*cm, height=7.2*cm))
-        elementos.append(Spacer(1, 0.2*cm))
+    if img_g1:
+        elementos.append(Image(img_g1, width=17.8*cm, height=6.0*cm))
+        elementos.append(Spacer(1, 0.1*cm))
+    if filas_t1:
+        t1 = Table(filas_t1, colWidths=[6.4*cm, 3.2*cm, 3.2*cm, 2.5*cm, 2.7*cm])
+        estilizar_tabla(t1, color_head='#1F618D', tiene_total=True)
+        elementos.append(t1)
+        elementos.append(Spacer(1, 0.35*cm))
 
-    if img_graf2:
-        elementos.append(Image(img_graf2, width=17.5*cm, height=7.2*cm))
-        elementos.append(Spacer(1, 0.3*cm))
-
-    # Tabla alineada de Líneas Clave
-    elementos.append(Paragraph("Detalle Comparativo por Línea / Categoría", estilo_sec))
-    t_cat = Table(df_tabla_cat, colWidths=[5.4*cm, 3.1*cm, 3.1*cm, 2.0*cm, 2.2*cm, 1.8*cm])
-    t_cat.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1F618D')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#EBF5FB')),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#D5D8DC')),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-    ]))
-    elementos.append(t_cat)
+    if img_g2:
+        elementos.append(Image(img_g2, width=17.8*cm, height=6.0*cm))
+        elementos.append(Spacer(1, 0.1*cm))
+    if filas_t2:
+        t2 = Table(filas_t2, colWidths=[6.4*cm, 3.2*cm, 3.2*cm, 2.5*cm, 2.7*cm])
+        estilizar_tabla(t2, color_head='#2874A6', tiene_total=False)
+        elementos.append(t2)
 
     elementos.append(PageBreak())
 
-    # --- PÁGINA 3: DESGLOSE ESPECÍFICO (MARCAS / SERVICIOS) Y TOP 10 CLIENTES ---
-    titulo_p3 = "DESGLOSE POR MARCAS Y TOP CLIENTES" if regla["destacar_marcas"] else ("MERCADERÍA VS. SERVICIOS Y TOP CLIENTES" if regla["es_rs"] else "DESGLOSE POR MARCAS Y TOP CLIENTES")
-    elementos.append(Paragraph(titulo_p3, estilo_titulo))
+    # --- PÁGINA 3: KARDEX Y RENTABILIDAD (CRUCE DESPACHOS VS FACTURACIÓN) ---
+    elementos.append(Paragraph("KARDEX Y RENTABILIDAD (VENTAS CRUZADAS VS. COSTO)", estilo_titulo))
+    elementos.append(Paragraph(f"Análisis de márgenes reales por despachos valorizados ({anio_ant} vs. {anio_act})", estilo_sub))
+
+    if img_g3:
+        elementos.append(Image(img_g3, width=17.8*cm, height=6.4*cm))
+        elementos.append(Spacer(1, 0.2*cm))
+
+    if filas_t3:
+        elementos.append(Paragraph("Detalle de Rentabilidad Interanual por Línea Clave", estilo_sec))
+        t3 = Table(filas_t3, colWidths=[4.2*cm, 2.5*cm, 2.5*cm, 2.5*cm, 2.3*cm, 2.0*cm, 2.0*cm])
+        estilizar_tabla(t3, color_head='#117864', tiene_total=True)
+        elementos.append(t3)
+    else:
+        elementos.append(Paragraph("<i>No se cargó archivo Kardex o no se registraron salidas por venta en el periodo.</i>", estilo_texto))
+
+    elementos.append(PageBreak())
+
+    # --- PÁGINA 4: RANKING TOP 10 CLIENTES ---
+    elementos.append(Paragraph("PRINCIPALES CLIENTES DEL PERIODO", estilo_titulo))
+    elementos.append(Paragraph(f"Top 10 clientes en líneas clave ({p_ini} - {p_fin} | {moneda})", estilo_sub))
     elementos.append(Spacer(1, 0.2*cm))
 
-    if df_tabla_esp:
-        sub_esp = "Top Marcas Principales" if not regla["es_rs"] else "Comparativo Mercadería vs. Servicio de Reencauche"
-        elementos.append(Paragraph(sub_esp, estilo_sec))
-        t_esp = Table(df_tabla_esp, colWidths=[6.2*cm, 3.3*cm, 3.3*cm, 2.3*cm, 2.5*cm])
-        t_esp.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2874A6')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#D5D8DC')),
-            ('TOPPADDING', (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ]))
-        elementos.append(t_esp)
-        elementos.append(Spacer(1, 0.5*cm))
-
-    elementos.append(Paragraph(f"Top 10 Clientes del Periodo ({p_ini} - {p_fin})", estilo_sec))
-    t_cli = Table(df_clientes, colWidths=[9.6*cm, 2.6*cm, 3.2*cm, 2.2*cm])
-    t_cli.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E8449')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F8F9F9'), colors.white]),
-        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#D5D8DC')),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-    ]))
+    t_cli = Table(filas_cli, colWidths=[9.8*cm, 2.6*cm, 3.4*cm, 2.2*cm])
+    estilizar_tabla(t_cli, color_head='#1E8449', tiene_total=False)
     elementos.append(t_cli)
 
     doc.build(elementos)
@@ -337,13 +329,13 @@ def render(ctx):
     st.info(f"**Reglas activas para esta empresa:** Se analizarán únicamente los tipos de venta **{', '.join(regla['tipos_venta'])}**.")
 
     uploaded_k_pdf = st.file_uploader(
-        "📂 Sube el archivo Kardex (.parquet o .xlsx) para incluir Costos y Márgenes en el PDF (Opcional, pero recomendado):",
+        "📂 Sube el archivo Kardex (.parquet o .xlsx) para incluir el análisis de Costos y Rentabilidad en el PDF:",
         type=["parquet", "xlsx"],
         key="uploader_kardex_pdf"
     )
 
     if st.button("🚀 Generar Informe Gerencial PDF con Análisis IA", type="primary", key="btn_gen_pdf"):
-        with st.spinner("Auditando datos, aplicando reglas de empresa y redactando diagnóstico con Gemini..."):
+        with st.spinner("Auditando datos comerciales y de Kardex, y redactando diagnóstico con Gemini..."):
             df_k = None
             if uploaded_k_pdf is not None:
                 df_k = pd.read_parquet(uploaded_k_pdf) if uploaded_k_pdf.name.endswith('.parquet') else pd.read_excel(uploaded_k_pdf, dtype=str)
@@ -363,50 +355,41 @@ def render(ctx):
             v_ant = df_v_ant['Venta_Conv'].sum() if not df_v_ant.empty else 0.0
             v_act = df_v_act['Venta_Conv'].sum()
 
+            vc_ant = df_c_ant['Ventas_Cruce'].sum() if not df_c_ant.empty else 0.0
+            vc_act = df_c_act['Ventas_Cruce'].sum() if not df_c_act.empty else 0.0
+
             c_ant = df_c_ant['Costo'].sum() if not df_c_ant.empty else 0.0
             c_act = df_c_act['Costo'].sum() if not df_c_act.empty else 0.0
 
-            u_ant = (df_c_ant['Ventas_Cruce'].sum() - c_ant) if not df_c_ant.empty else 0.0
-            u_act = (df_c_act['Ventas_Cruce'].sum() - c_act) if not df_c_act.empty else 0.0
+            u_ant = vc_ant - c_ant
+            u_act = vc_act - c_act
 
-            m_ant = (u_ant / df_c_ant['Ventas_Cruce'].sum() * 100) if (not df_c_ant.empty and df_c_ant['Ventas_Cruce'].sum() != 0) else 0.0
-            m_act = (u_act / df_c_act['Ventas_Cruce'].sum() * 100) if (not df_c_act.empty and df_c_act['Ventas_Cruce'].sum() != 0) else 0.0
+            m_ant = (u_ant / vc_ant * 100) if vc_ant != 0 else 0.0
+            m_act = (u_act / vc_act * 100) if vc_act != 0 else 0.0
 
             kpis = {
                 "v_ant": v_ant, "v_act": v_act, "var_v": ((v_act - v_ant) / abs(v_ant) * 100) if v_ant != 0 else 0.0,
+                "vc_ant": vc_ant, "vc_act": vc_act, "var_vc": ((vc_act - vc_ant) / abs(vc_ant) * 100) if vc_ant != 0 else 0.0,
                 "c_ant": c_ant, "c_act": c_act, "var_c": ((c_act - c_ant) / abs(c_ant) * 100) if c_ant != 0 else 0.0,
                 "u_ant": u_ant, "u_act": u_act, "var_u": ((u_act - u_ant) / abs(u_ant) * 100) if u_act != 0 else 0.0,
                 "m_ant": m_ant, "m_act": m_act
             }
 
-            # Agrupación por TipoVenta / Categoría
+            # --- BLOQUE 1 PÁGINA 2: VENTAS POR LÍNEA CLAVE ---
             dim_p1 = 'TipoVenta' if 'TipoVenta' in df_v_act.columns else 'Tipo_Categoria'
             g1_ant = df_v_ant.groupby(dim_p1, as_index=False)['Venta_Conv'].sum().rename(columns={'Venta_Conv': 'Ventas_Ant'}) if not df_v_ant.empty else pd.DataFrame(columns=[dim_p1, 'Ventas_Ant'])
             g1_act = df_v_act.groupby(dim_p1, as_index=False)['Venta_Conv'].sum().rename(columns={'Venta_Conv': 'Ventas_Act'})
             comp_cat = pd.merge(g1_ant, g1_act, on=dim_p1, how='outer').fillna(0).sort_values('Ventas_Act', ascending=False)
             comp_cat['Var_%'] = np.where(comp_cat['Ventas_Ant'] != 0, ((comp_cat['Ventas_Act'] - comp_cat['Ventas_Ant']) / comp_cat['Ventas_Ant'].abs()) * 100, 0)
+            comp_cat['Part_%'] = (comp_cat['Ventas_Act'] / v_act * 100) if v_act != 0 else 0
 
-            # Márgenes por línea desde Kardex
-            if not df_c_act.empty and dim_p1 in df_c_act.columns:
-                mg_df = df_c_act.groupby(dim_p1, as_index=False)[['Ventas_Cruce', 'Costo', 'Utilidad']].sum()
-                mg_df['Margen_%'] = np.where(mg_df['Ventas_Cruce'] != 0, (mg_df['Utilidad'] / mg_df['Ventas_Cruce']) * 100, 0)
-                comp_cat = pd.merge(comp_cat, mg_df[[dim_p1, 'Utilidad', 'Margen_%']], on=dim_p1, how='left').fillna({'Utilidad': 0, 'Margen_%': 0})
-            else:
-                comp_cat['Utilidad'] = 0.0
-                comp_cat['Margen_%'] = 0.0
+            img1 = crear_grafico_barras_png(comp_cat, dim_p1, 'Ventas_Ant', 'Ventas_Act', f'Ventas {anio_ant}', f'Ventas {anio_act}', f"Ventas por Línea Clave ({anio_ant} vs {anio_act})")
 
-            filas_cat = [["LÍNEA / CATEGORÍA", f"VENTAS {anio_ant}", f"VENTAS {anio_act}", "VAR %", f"UTILIDAD {anio_act}", "MARGEN"]]
+            filas_t1 = [["LÍNEA / CATEGORÍA", f"VENTAS {anio_ant}", f"VENTAS {anio_act}", "VAR %", "PART. %"]]
             for _, r in comp_cat.iterrows():
-                filas_cat.append([
-                    str(r[dim_p1])[:26], f"{simb} {r['Ventas_Ant']:,.0f}", f"{simb} {r['Ventas_Act']:,.0f}",
-                    f"{r['Var_%']:+.1f}%", f"{simb} {r['Utilidad']:,.0f}", f"{r['Margen_%']:.1f}%"
-                ])
-            filas_cat.append(["TOTAL GENERAL", f"{simb} {v_ant:,.0f}", f"{simb} {v_act:,.0f}", f"{kpis['var_v']:+.1f}%", f"{simb} {u_act:,.0f}", f"{m_act:.1f}%"])
-
-            # Gráficos
-            img1 = crear_grafico_barras_png(comp_cat, dim_p1, anio_ant, anio_act, f"Comparativo Ventas por Línea Clave ({anio_ant} vs {anio_act})", simb)
-
-            # Agrupación específica (Marcas para TS/IS o Mercadería vs Servicio para RS)
+                filas_t1.append([str(r[dim_p1])[:28], f"{simb} {r['Ventas_Ant']:,.2f}", f"{simb} {r['Ventas_Act']:,.2f}", f"{r['Var_%']:+.1f}%", f"{r['Part_%']:.1f}%"])
+            filas_t1.append(["TOTAL GENERAL", f"{simb} {v_ant:,.2f}", f"{simb} {v_act:,.2f}", f"{kpis['var_v']:+.1f}%", "100.0%"])
+            # --- BLOQUE 2 PÁGINA 2: MARCAS O MERCADERÍA VS SERVICIO ---
             if regla["es_rs"]:
                 df_v_act['Grupo_RS'] = np.where(df_v_act['TipoVenta'] == 'SERVICIO DE REENCAUCHE', 'SERVICIO DE REENCAUCHE', 'MERCADERÍA (CÁMARAS/PARCHES/LLANTAS)')
                 if not df_v_ant.empty:
@@ -423,31 +406,73 @@ def render(ctx):
             comp_esp['Var_%'] = np.where(comp_esp['Ventas_Ant'] != 0, ((comp_esp['Ventas_Act'] - comp_esp['Ventas_Ant']) / comp_esp['Ventas_Ant'].abs()) * 100, 0)
             comp_esp['Part_%'] = (comp_esp['Ventas_Act'] / v_act * 100) if v_act != 0 else 0
 
-            img2 = crear_grafico_barras_png(comp_esp, dim_p2, anio_ant, anio_act, f"{tit_g2} ({anio_ant} vs {anio_act})", simb)
+            img2 = crear_grafico_barras_png(comp_esp, dim_p2, 'Ventas_Ant', 'Ventas_Act', f'Ventas {anio_ant}', f'Ventas {anio_act}', f"{tit_g2} ({anio_ant} vs {anio_act})", color_ant='#AEB6BF', color_act='#2874A6')
 
-            filas_esp = [[tit_g2.upper(), f"VENTAS {anio_ant}", f"VENTAS {anio_act}", "VAR %", "PART. %"]]
-            for _, r in comp_esp.head(8).iterrows():
-                filas_esp.append([str(r[dim_p2])[:30], f"{simb} {r['Ventas_Ant']:,.0f}", f"{simb} {r['Ventas_Act']:,.0f}", f"{r['Var_%']:+.1f}%", f"{r['Part_%']:.1f}%"])
+            filas_t2 = [[tit_g2.upper(), f"VENTAS {anio_ant}", f"VENTAS {anio_act}", "VAR %", "PART. %"]]
+            for _, r in comp_esp.head(6).iterrows():
+                filas_t2.append([str(r[dim_p2])[:30], f"{simb} {r['Ventas_Ant']:,.2f}", f"{simb} {r['Ventas_Act']:,.2f}", f"{r['Var_%']:+.1f}%", f"{r['Part_%']:.1f}%"])
 
+            # --- PÁGINA 3: KARDEX Y RENTABILIDAD (CRUCE DESPACHOS VS FACTURACIÓN) ---
+            img3 = None
+            filas_t3 = []
+            texto_kardex_ia = "No se adjuntó archivo Kardex en esta ejecución."
+
+            if not df_c_act.empty or not df_c_ant.empty:
+                kc_ant = df_c_ant.groupby(dim_p1, as_index=False).agg(VC_Ant=('Ventas_Cruce', 'sum'), Costo_Ant=('Costo', 'sum'), Util_Ant=('Utilidad', 'sum')) if not df_c_ant.empty else pd.DataFrame(columns=[dim_p1, 'VC_Ant', 'Costo_Ant', 'Util_Ant'])
+                kc_act = df_c_act.groupby(dim_p1, as_index=False).agg(VC_Act=('Ventas_Cruce', 'sum'), Costo_Act=('Costo', 'sum'), Util_Act=('Utilidad', 'sum')) if not df_c_act.empty else pd.DataFrame(columns=[dim_p1, 'VC_Act', 'Costo_Act', 'Util_Act'])
+
+                comp_k = pd.merge(kc_ant, kc_act, on=dim_p1, how='outer').fillna(0).sort_values('VC_Act', ascending=False)
+                comp_k['Mg_Ant_%'] = np.where(comp_k['VC_Ant'] != 0, (comp_k['Util_Ant'] / comp_k['VC_Ant']) * 100, 0)
+                comp_k['Mg_Act_%'] = np.where(comp_k['VC_Act'] != 0, (comp_k['Util_Act'] / comp_k['VC_Act']) * 100, 0)
+
+                img3 = crear_grafico_barras_png(comp_k, dim_p1, 'Costo_Act', 'VC_Act', f'Costo Kardex {anio_act}', f'Venta Cruzada {anio_act}', f"Venta Cruzada vs. Costo Kardex {anio_act} por Línea Clave", color_ant='#C0392B', color_act='#117864')
+
+                filas_t3 = [["LÍNEA CLAVE", f"VENTA {anio_act}", f"COSTO {anio_act}", f"UTIL. {anio_act}", f"UTIL. {anio_ant}", f"MG {anio_ant}", f"MG {anio_act}"]]
+                for _, r in comp_k.iterrows():
+                    filas_t3.append([
+                        str(r[dim_p1])[:22],
+                        f"{simb} {r['VC_Act']:,.0f}",
+                        f"{simb} {r['Costo_Act']:,.0f}",
+                        f"{simb} {r['Util_Act']:,.0f}",
+                        f"{simb} {r['Util_Ant']:,.0f}",
+                        f"{r['Mg_Ant_%']:.1f}%",
+                        f"{r['Mg_Act_%']:.1f}%"
+                    ])
+                filas_t3.append([
+                    "TOTAL KARDEX",
+                    f"{simb} {vc_act:,.0f}",
+                    f"{simb} {c_act:,.0f}",
+                    f"{simb} {u_act:,.0f}",
+                    f"{simb} {u_ant:,.0f}",
+                    f"{m_ant:.1f}%",
+                    f"{m_act:.1f}%"
+                ])
+
+                texto_kardex_ia = comp_k[[dim_p1, 'VC_Act', 'Costo_Act', 'Util_Act', 'Mg_Ant_%', 'Mg_Act_%']].to_string(index=False)
+
+            # --- PÁGINA 4: TOP 10 CLIENTES ---
             filas_cli = [["CLIENTE", "UNIDADES", f"VENTAS {anio_act}", "PART. %"]]
             for _, r in top_cli.iterrows():
                 part_c = (r['Ventas'] / v_act * 100) if v_act != 0 else 0
                 filas_cli.append([str(r['ClienteNombre'])[:42], f"{r['Unidades']:,.0f}", f"{simb} {r['Ventas']:,.2f}", f"{part_c:.1f}%"])
 
-            # Resumen numérico limpio para Gemini
+            # Resumen completo para Gemini
             resumen_ia = f"""
-            - Ventas {anio_ant}: {simb} {v_ant:,.2f} | Ventas {anio_act}: {simb} {v_act:,.2f} (Variación: {kpis['var_v']:+.2f}%)
-            - Costo Kardex {anio_act}: {simb} {c_act:,.2f} | Utilidad Bruta {anio_act}: {simb} {u_act:,.2f} | Margen Bruto {anio_act}: {m_act:.2f}% (vs {m_ant:.2f}% en {anio_ant})
-            - Desglose por Línea Principal ({anio_act}):
-            {comp_cat[[dim_p1, 'Ventas_Ant', 'Ventas_Act', 'Var_%', 'Margen_%']].to_string(index=False)}
-            - Desglose Específico ({tit_g2}):
+            - Ventas Comerciales {anio_ant}: {simb} {v_ant:,.2f} | Ventas Comerciales {anio_act}: {simb} {v_act:,.2f} (Variación: {kpis['var_v']:+.2f}%)
+            - Ventas Cruzadas Kardex {anio_act}: {simb} {vc_act:,.2f} | Costo Kardex {anio_act}: {simb} {c_act:,.2f} | Utilidad Bruta {anio_act}: {simb} {u_act:,.2f}
+            - Margen Bruto Global {anio_act}: {m_act:.2f}% (vs {m_ant:.2f}% en {anio_ant})
+            - Detalle Ventas Comerciales por Línea ({anio_act}):
+            {comp_cat[[dim_p1, 'Ventas_Ant', 'Ventas_Act', 'Var_%', 'Part_%']].to_string(index=False)}
+            - Detalle Específico ({tit_g2}):
             {comp_esp[[dim_p2, 'Ventas_Ant', 'Ventas_Act', 'Var_%', 'Part_%']].head(6).to_string(index=False)}
+            - Detalle Rentabilidad Kardex (Despachos vs Facturación):
+            {texto_kardex_ia}
             """
 
             texto_ia = generar_analisis_gemini(resumen_ia, regla)
             pdf_bytes = construir_pdf_gerencial(
                 regla, empresa, moneda, p_inicio, p_fin, anio_ant, anio_act,
-                kpis, texto_ia, img1, img2, filas_cat, filas_esp, filas_cli
+                kpis, texto_ia, img1, filas_t1, img2, filas_t2, img3, filas_t3, filas_cli
             )
 
             st.success("✅ ¡Informe Gerencial PDF generado exitosamente!")
@@ -461,4 +486,3 @@ def render(ctx):
                 mime="application/pdf",
                 key="dl_pdf_gerencial_final"
             )
-
