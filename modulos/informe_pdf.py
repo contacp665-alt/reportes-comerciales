@@ -241,22 +241,39 @@ def obtener_datos_limpios_empresa(df_ventas_all, df_k_all, df_tc, df_maestro, em
             kardex = kardex[(kardex["_empresa"] == str(empresa)) & (kardex["_periodo"] >= str(p_ini)) & (kardex["_periodo"] <= str(p_fin)) & kardex["_trans"].isin(["AVT", "VTA", "VTI"]) & kardex["Item"].isin(items_validos)].copy()
             if not kardex.empty:
                 kardex["Costo"] = _numero_seguro(kardex[col_costo]) * -1
+                kardex["Cantidad"] = _numero_seguro(kardex["Cantidad"])
                 kardex["Doc_Cruce"] = _texto_columna(kardex, "ReferenciaNumeroDocumento.1")
                 kardex = kardex[kardex["Doc_Cruce"] != ""]
-                k_agg = kardex.groupby(["Doc_Cruce", "Item"], as_index=False)["Costo"].sum()
+                k_agg = (kardex.groupby(["Doc_Cruce", "Item"], as_index=False)
+                         .agg(Cant_Kardex=("Cantidad", "sum"), Costo=("Costo", "sum")))
                 ventas_hist = df_ventas_all.copy()
                 if all(c in ventas_hist.columns for c in ["CompaniaSocio", "NumeroDocumento", "ItemCodigo", "Monto"]):
                     ventas_hist = ventas_hist[_texto_columna(ventas_hist, "CompaniaSocio") == str(empresa)].copy()
                     ventas_hist["Doc_Cruce"] = _texto_columna(ventas_hist, "NumeroDocumento")
                     ventas_hist["Item"] = _texto_columna(ventas_hist, "ItemCodigo")
+                    ventas_hist["CantidadPedida"] = _numero_seguro(ventas_hist["CantidadPedida"])
                     llaves = set(zip(k_agg["Doc_Cruce"], k_agg["Item"]))
                     ventas_hist = ventas_hist[ventas_hist.set_index(["Doc_Cruce", "Item"]).index.isin(llaves)].copy()
                     ventas_hist = _tipo_cambio_por_fecha(ventas_hist, df_tc)
                     ventas_hist["Monto"] = _numero_seguro(ventas_hist["Monto"])
-                    ventas_hist = _convertir_montos(ventas_hist, moneda, columna_destino="Ventas_Cruce")
-                    v_agg = ventas_hist.groupby(["Doc_Cruce", "Item"], as_index=False)["Ventas_Cruce"].sum()
+                    ventas_hist = _convertir_montos(ventas_hist, moneda, columna_destino="Ventas_Facturadas")
+                    v_agg = (ventas_hist.groupby(["Doc_Cruce", "Item"], as_index=False)
+                             .agg(Cant_Ventas=("CantidadPedida", "sum"),
+                                  Ventas_Facturadas=("Ventas_Facturadas", "sum")))
                     cruce = k_agg.merge(v_agg, on=["Doc_Cruce", "Item"], how="left")
-                    cruce["Ventas_Cruce"] = _numero_seguro(cruce["Ventas_Cruce"])
+                    cruce["Cant_Kardex"] = _numero_seguro(cruce["Cant_Kardex"])
+                    cruce["Cant_Ventas"] = _numero_seguro(cruce["Cant_Ventas"])
+                    cruce["Ventas_Facturadas"] = _numero_seguro(cruce["Ventas_Facturadas"])
+                    cruce["Costo"] = _numero_seguro(cruce["Costo"])
+                    cant_desp_abs = cruce["Cant_Kardex"].abs()
+                    cond_parcial = (cruce["Cant_Kardex"] <= 0) & (cruce["Cant_Ventas"] > 0) & (cant_desp_abs < cruce["Cant_Ventas"])
+                    valor_unit = np.where(cruce["Cant_Ventas"] > 0, cruce["Ventas_Facturadas"] / cruce["Cant_Ventas"], 0.0)
+
+                    cruce["Ventas_Cruce"] = np.where(
+                        cond_parcial,
+                        valor_unit * cant_desp_abs,
+                        cruce["Ventas_Facturadas"]
+                    )
                     cruce["Utilidad"] = cruce["Ventas_Cruce"] - cruce["Costo"]
                     cruce = cruce.merge(maestro[columnas_maestro], on="Item", how="left", validate="many_to_one")
                     if "TipoVenta" not in cruce.columns:
