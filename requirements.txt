@@ -7,3 +7,4 @@ pyarrow
 reportlab
 matplotlib
 google-genai
+openai
